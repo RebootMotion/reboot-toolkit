@@ -17,8 +17,8 @@ def serialize(obj):
         )
 
 
-def invoke_lambda(lambda_function_name: str, lambda_payload: str) -> Dict:
-    lambda_client = boto3.session.Session().client('lambda')
+def invoke_lambda(session: boto3.session.Session, lambda_function_name: str, lambda_payload: str) -> Dict:
+    lambda_client = session.client('lambda')
 
     lambda_response = lambda_client.invoke(
         FunctionName=lambda_function_name,
@@ -144,6 +144,7 @@ def filter_analysis_dicts(
 
 
 def get_animation(
+    session: boto3.session.Session,
     analysis_dicts: List[Dict[Any, Any]],
     pop_mean_df: pd.DataFrame,
     pop_std_df: pd.DataFrame,
@@ -181,11 +182,12 @@ def get_animation(
     }
     payload = {"function_name": "get_joint_angle_animation", "args": args}
     payload = json.dumps(payload, default=serialize)
-    response = invoke_lambda(lambda_function_name="colab_notebook_backend", lambda_payload=payload)
+    response = invoke_lambda(session=session, lambda_function_name="colab_notebook_backend", lambda_payload=payload)
     return plotly.io.from_json(json.loads(response["Payload"].read()))
 
 
 def get_joint_plot(
+    session: boto3.session.Session,
     analysis_dicts: List[Dict[Any, Any]],
     pop_mean_df: pd.DataFrame,
     pop_std_df: pd.DataFrame,
@@ -224,7 +226,7 @@ def get_joint_plot(
     }
     payload = {"function_name": "get_joint_angle_plots", "args": args}
     payload = json.dumps(payload, default=serialize)
-    response = invoke_lambda(lambda_function_name="colab_notebook_backend", lambda_payload=payload)
+    response = invoke_lambda(session=session, lambda_function_name="colab_notebook_backend", lambda_payload=payload)
     return plotly.io.from_json(json.loads(response["Payload"].read()))
 
 
