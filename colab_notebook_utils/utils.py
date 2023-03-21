@@ -17,17 +17,20 @@ def serialize(obj):
         )
 
 
-def invoke_lambda(session: boto3.session.Session, lambda_function_name: str, lambda_payload: str) -> Dict:
-    lambda_client = session.client('lambda')
+def invoke_lambda(
+    session: boto3.session.Session,
+    lambda_function_name: str,
+    lambda_payload: str,
+) -> Dict:
+    lambda_client = session.client("lambda")
 
     lambda_response = lambda_client.invoke(
         FunctionName=lambda_function_name,
-        InvocationType='RequestResponse',
-        Payload=lambda_payload
+        InvocationType="RequestResponse",
+        Payload=lambda_payload,
     )
 
     return lambda_response
-
 
 
 def list_chunks(lst: List[Any], n: int) -> Generator[List[Any], None, None]:
@@ -38,8 +41,12 @@ def list_chunks(lst: List[Any], n: int) -> Generator[List[Any], None, None]:
 
 def get_relative_frame(time_series: pd.Series) -> pd.Series:
     """Input a pandas series of floats, and return ranks with 0 as rank = 0 and negative numbers as negative ranks."""
-    all_ranks = time_series.where(time_series >= 0).rank(method='first') - 1  # start at 0 instead of 1
-    negative_ranks = time_series.where(time_series < 0).rank(method='first', ascending=False)
+    all_ranks = (
+        time_series.where(time_series >= 0).rank(method="first") - 1
+    )  # start at 0 instead of 1
+    negative_ranks = time_series.where(time_series < 0).rank(
+        method="first", ascending=False
+    )
     all_ranks.update(-negative_ranks)
     return all_ranks
 
@@ -182,7 +189,11 @@ def get_animation(
     }
     payload = {"function_name": "get_joint_angle_animation", "args": args}
     payload = json.dumps(payload, default=serialize)
-    response = invoke_lambda(session=session, lambda_function_name="colab_notebook_backend", lambda_payload=payload)
+    response = invoke_lambda(
+        session=session,
+        lambda_function_name="colab_notebook_backend",
+        lambda_payload=payload,
+    )
     return plotly.io.from_json(json.loads(response["Payload"].read()))
 
 
@@ -226,7 +237,11 @@ def get_joint_plot(
     }
     payload = {"function_name": "get_joint_angle_plots", "args": args}
     payload = json.dumps(payload, default=serialize)
-    response = invoke_lambda(session=session, lambda_function_name="colab_notebook_backend", lambda_payload=payload)
+    response = invoke_lambda(
+        session=session,
+        lambda_function_name="colab_notebook_backend",
+        lambda_payload=payload,
+    )
     return plotly.io.from_json(json.loads(response["Payload"].read()))
 
 
