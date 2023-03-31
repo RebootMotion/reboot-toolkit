@@ -17,6 +17,10 @@ def serialize(obj):
         raise TypeError(
             f"Object of type {obj.__class__.__name__} is not JSON serializable"
         )
+    
+
+def lambda_has_error(response: Dict) -> bool:
+    return 'FunctionError' in response
 
 
 def invoke_lambda(

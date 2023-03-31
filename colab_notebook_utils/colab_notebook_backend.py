@@ -173,7 +173,12 @@ def get_animation(
         invocation_type=InvocationTypes.SYNC,
         lambda_payload=payload,
     )
-    return plotly.io.from_json(json.loads(response["Payload"].read()))
+    payload = response["Payload"].read()
+    if ut.lambda_has_error(response):
+        print(f"Error in calculation")
+        print(payload)
+        return payload
+    return plotly.io.from_json(json.loads(payload))
 
 
 def get_joint_plot(
@@ -222,7 +227,12 @@ def get_joint_plot(
         invocation_type=InvocationTypes.SYNC,
         lambda_payload=payload,
     )
-    return plotly.io.from_json(json.loads(response["Payload"].read()))
+    payload = response["Payload"].read()
+    if ut.lambda_has_error(response):
+        print(f"Error in calculation")
+        print(payload)
+        return payload
+    return plotly.io.from_json(json.loads(payload))
 
 
 def save_figs_to_html(
