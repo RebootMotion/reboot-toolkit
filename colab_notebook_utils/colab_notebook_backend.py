@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 import plotly
 
-import utils as ut
-from datatypes import Functions, InvocationTypes
+from . import utils as ut
+from .datatypes import Functions, InvocationTypes
 
 
 def list_chunks(lst: List[Any], n: int) -> Generator[List[Any], None, None]:

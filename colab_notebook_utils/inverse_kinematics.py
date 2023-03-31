@@ -10,8 +10,8 @@ import numpy as np
 import pandas as pd
 from botocore.errorfactory import ClientError
 
-import utils as ut
-from datatypes import Functions, InvocationTypes
+from . import utils as ut
+from .datatypes import Functions, InvocationTypes
 
 
 def get_log_level() -> Any:

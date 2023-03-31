@@ -5,7 +5,7 @@ import boto3
 import numpy as np
 import pandas as pd
 
-from datatypes import Functions, InvocationTypes
+from .datatypes import Functions, InvocationTypes
 
 
 def serialize(obj):
