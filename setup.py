@@ -9,7 +9,7 @@ def get_requirements():
 
 setup(
     name='colab-notebook-utils',
-    version='1.0.0',
+    version='1.1.1',
     packages=['colab_notebook_utils'],
     url='',
     license='',
