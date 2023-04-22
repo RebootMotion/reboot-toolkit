@@ -11,6 +11,16 @@ from . import utils as ut
 from .datatypes import Functions, InvocationTypes, S3Metadata, PlayerMetadata
 
 
+def display_available_df_data(df):
+    print('Available data...')
+    print()
+
+    for col in df.columns:
+        print(col)
+        print(df[col].unique())
+        print()
+
+
 def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
 
     s3_summary_df = wr.s3.read_csv(
@@ -24,6 +34,8 @@ def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
     s3_summary_df['session_num'] = s3_summary_df['session_num'].astype('string')
 
     s3_summary_df['session_date'] = pd.to_datetime(s3_summary_df['session_date'])
+
+    display_available_df_data(s3_summary_df)
 
     return s3_summary_df
 
@@ -54,7 +66,11 @@ def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -
     if player_metadata.year is not None:
         mask = mask & (s3_df['year'] == player_metadata.year)
 
-    return s3_df.loc[mask]
+    return_df = s3_df.loc[mask]
+
+    display_available_df_data(return_df)
+
+    return return_df
 
 
 def list_available_s3_keys(org_id, primary_df):
@@ -79,10 +95,13 @@ def list_available_s3_keys(org_id, primary_df):
     return all_files
 
 
-def load_games_from_df_with_s3_paths(df: pd.DataFrame) -> pd.DataFrame:
+def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
+
+    game_paths = sorted(list(set(game_paths)))
+
     all_games = []
 
-    for i, game_path in enumerate(df['s3_path_delivery'].unique()):
+    for i, game_path in enumerate(game_paths):
 
         try:
             current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
@@ -91,17 +110,19 @@ def load_games_from_df_with_s3_paths(df: pd.DataFrame) -> pd.DataFrame:
 
             all_games.append(current_game)
 
-            print('read path:', game_path, ';', i + 1, 'out of', len(df))
+            print('Loaded path:', game_path, '-', i + 1, 'out of', len(game_paths))
 
         except Exception as exc:
-            print('error reading path', game_path, exc)
+            print('Error reading path', game_path, exc)
             continue
 
     all_games_df = pd.concat(all_games).reset_index(drop=True)
 
     if 'rel_frame' not in all_games_df.columns:
+        print('Creating relative frame column...')
         all_games_df['rel_frame'] = all_games_df['time_from_max_hand'].copy()
         all_games_df['rel_frame'] = all_games_df.groupby('org_movement_id')['rel_frame'].transform(get_relative_frame)
+        print('Done!')
 
     return all_games_df
 
@@ -112,30 +133,31 @@ def load_data_into_analysis_dict(
         df_mean: Optional[pd.DataFrame] = None,
         df_std: Optional[pd.DataFrame] = None
 ) -> dict:
-    print('Loading player data into analysis dict', player_metadata)
+    print('Loading into dict player metadata:', player_metadata)
 
     analysis_dict = {
         'mlbam_player_id': player_metadata.mlbam_player_ids[0] if player_metadata.mlbam_player_ids else None,
         'session_date': player_metadata.session_dates[0] if player_metadata.session_dates else None,
         'game_pk': player_metadata.game_pks[0] if player_metadata.game_pks else None,
         'mlb_play_guid': player_metadata.mlb_play_guid,
-        's3_prefix': player_metadata.s3_prefix
+        's3_prefix': player_metadata.s3_prefix,
+        'eye_hand_multiplier': player_metadata.s3_metadata.handedness.eye_hand_multiplier
     }
 
     if df is None:
-        print('Downloading data...')
+        print('No df provided, downloading data using s3 prefix...', analysis_dict['s3_prefix'])
         df = wr.s3.read_csv(analysis_dict['s3_prefix'], index_col=[0])
 
     if df_mean is None:
-        print('aggregating mean')
         analysis_dict['df_mean'] = df.groupby('rel_frame').agg('mean', numeric_only=True).reset_index()
+        print('Aggregated mean from df')
 
     else:
         analysis_dict['df_mean'] = df_mean
 
     if df_std is None:
-        print('aggregating std')
         analysis_dict['df_std'] = df.groupby('rel_frame').agg('std', numeric_only=True).reset_index()
+        print('Aggregated std from df')
 
     else:
         analysis_dict['df_std'] = df_std
@@ -179,6 +201,7 @@ def get_available_joint_angles(analysis_dicts: List[Dict]) -> List[str]:
         "org_movement_id",
         "event",
         "rel_frame",
+        "game_pk"
     )
     joint_angle_names = [
         jnt
@@ -276,12 +299,12 @@ def get_animation(
     pop_std_df: pd.DataFrame,
     time_column: str,
     joint_angle: str,
-    eye_hand_multiplier: int,
     plot_joint_angle_mean: bool,
     frame_step: int = 25,
     downsample_data: int = 2,
 ) -> str:
     times = analysis_dicts[0]["df"][time_column].tolist()[:: int(frame_step)]
+
     pop_df = filter_pop_df(
         pop_mean_df,
         pop_std_df,
@@ -289,6 +312,7 @@ def get_animation(
         [joint_angle],
         downsample=downsample_data,
     )
+
     filtered_analysis_dicts = filter_analysis_dicts(
         analysis_dicts,
         time_column,
@@ -297,28 +321,37 @@ def get_animation(
         keep_df_mean=plot_joint_angle_mean,
         downsample=downsample_data,
     )
+
     args = {
         "analysis_dicts": filtered_analysis_dicts,
         "pop_df": pop_df,
         "times": times,
         "time_column": time_column,
         "joint_angle": joint_angle,
-        "eye_hand_multiplier": eye_hand_multiplier,
+        "eye_hand_multiplier": analysis_dicts[0]['eye_hand_multiplier'],
         "plot_joint_angle_mean": plot_joint_angle_mean,
     }
+
     payload = {"function_name": "get_joint_angle_animation", "args": args}
+
     payload = json.dumps(payload, default=ut.serialize)
+
+    print('Sending to AWS...')
     response = ut.invoke_lambda(
         session=session,
         lambda_function_name=Functions.VISUALIZATIONS,
         invocation_type=InvocationTypes.SYNC,
         lambda_payload=payload,
     )
+
+    print('Reading Response...')
     payload = response["Payload"].read()
     if ut.lambda_has_error(response):
         print(f"Error in calculation")
         print(payload)
         return payload
+
+    print("Returning Plotly figure...")
     return plotly.io.from_json(json.loads(payload))
 
 
@@ -345,6 +378,7 @@ def get_joint_plot(
         joint_angles,
         downsample=downsample_data,
     )
+
     filtered_analysis_dicts = filter_analysis_dicts(
         analysis_dicts,
         time_column,
@@ -353,6 +387,7 @@ def get_joint_plot(
         keep_df_mean=True,
         downsample=downsample_data,
     )
+
     args = {
         "analysis_dicts": filtered_analysis_dicts,
         "pop_df": pop_df,
@@ -360,19 +395,27 @@ def get_joint_plot(
         "joint_angles": joint_angles,
         "plot_colors": plot_colors,
     }
+
     payload = {"function_name": "get_joint_angle_plots", "args": args}
+
     payload = json.dumps(payload, default=ut.serialize)
+
+    print('Sending to AWS...')
     response = ut.invoke_lambda(
         session=session,
         lambda_function_name=Functions.VISUALIZATIONS,
         invocation_type=InvocationTypes.SYNC,
         lambda_payload=payload,
     )
+    print('Reading Response...')
     payload = response["Payload"].read()
+
     if ut.lambda_has_error(response):
         print(f"Error in calculation")
         print(payload)
         return payload
+
+    print("Returning Plotly figure...")
     return plotly.io.from_json(json.loads(payload))
 
 
