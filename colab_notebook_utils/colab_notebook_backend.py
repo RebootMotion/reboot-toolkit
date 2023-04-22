@@ -67,7 +67,7 @@ def add_to_mask(mask: pd.Series, df: pd.DataFrame, col: str, vals: list) -> pd.S
 
 def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Filter the S3 summary dataframe for only rows that are associated with the input player metadata
+    Filter the S3 summary dataframe for only rows that are associated with the input player metadata.
 
     :param player_metadata: the metadata to use to filter the dataframe
     :param s3_df: the s3 summary dataframe
@@ -199,7 +199,7 @@ def load_data_into_analysis_dict(
     }
 
     if df is None:
-        print('No df provided, downloading data using s3 prefix...', analysis_dict['s3_prefix'])
+        print('No df provided, downloading data using s3 prefix:', analysis_dict['s3_prefix'])
         df = wr.s3.read_csv(analysis_dict['s3_prefix'], index_col=[0])
 
     if df_mean is None:
