@@ -1,14 +1,155 @@
-import json
-import os
-from typing import Any, Dict, Generator, List
-
+import awswrangler as wr
 import boto3
+import json
 import numpy as np
+import os
 import pandas as pd
 import plotly
 
+from typing import Any, Dict, Generator, List, Optional
 from . import utils as ut
-from .datatypes import Functions, InvocationTypes
+from .datatypes import Functions, InvocationTypes, S3Metadata, PlayerMetadata
+
+
+def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
+
+    s3_summary_df = wr.s3.read_csv(
+        [f"s3://reboot-motion-{s3_metadata.org_id}/population/s3_summary.csv"], index_col=[0]
+    )
+
+    s3_summary_df['s3_path_delivery'] = s3_summary_df['s3_path_delivery'] + s3_metadata.file_type + '/'
+
+    s3_summary_df['org_player_id'] = s3_summary_df['org_player_id'].astype('string')
+
+    s3_summary_df['session_num'] = s3_summary_df['session_num'].astype('string')
+
+    s3_summary_df['session_date'] = pd.to_datetime(s3_summary_df['session_date'])
+
+    return s3_summary_df
+
+
+def add_to_mask(mask, df, col, vals):
+    return mask & df[col].isin(vals)
+
+
+def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -> pd.DataFrame:
+    mask = (s3_df['mocap_type'] == player_metadata.s3_metadata.mocap_type) \
+           & (s3_df['movement_type'] == player_metadata.s3_metadata.movement_type)
+
+    if player_metadata.mlbam_player_ids:
+        mask = add_to_mask(mask, s3_df, 'org_player_id', player_metadata.mlbam_player_ids)
+
+    if player_metadata.session_dates:
+        mask = add_to_mask(mask, s3_df, 'session_date', player_metadata.session_dates)
+
+    if player_metadata.game_pks:
+        mask = add_to_mask(mask, s3_df, 'session_num', player_metadata.game_pks)
+
+    if player_metadata.session_date_start is not None:
+        mask = mask & (s3_df['session_date'] >= pd.Timestamp(player_metadata.session_date_start))
+
+    if player_metadata.session_date_end is not None:
+        mask = mask & (s3_df['session_date'] <= pd.Timestamp(player_metadata.session_date_end))
+
+    if player_metadata.year is not None:
+        mask = mask & (s3_df['year'] == player_metadata.year)
+
+    return s3_df.loc[mask]
+
+
+def list_available_s3_keys(org_id, primary_df):
+    s3_client = boto3.session.Session().client("s3")
+
+    bucket = f"reboot-motion-{org_id}"
+
+    all_files = []
+
+    for s3_path_delivery in primary_df['s3_path_delivery']:
+        print('s3 base path', s3_path_delivery)
+
+        key_prefix = '/'.join(s3_path_delivery.split('s3://')[-1].split('/')[1:])
+        objs = s3_client.list_objects_v2(Bucket=bucket, Prefix=key_prefix)
+
+        s3_files = sorted([obj['Key'] for obj in objs.get('Contents', [])])
+        print(s3_files)
+        print()
+
+        all_files.extend(s3_files)
+
+    return all_files
+
+
+def load_games_from_df_with_s3_paths(df: pd.DataFrame) -> pd.DataFrame:
+    all_games = []
+
+    for i, game_path in enumerate(df['s3_path_delivery'].unique()):
+
+        try:
+            current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
+
+            current_game['game_pk'] = game_path.split('/')[-5]
+
+            all_games.append(current_game)
+
+            print('read path:', game_path, ';', i + 1, 'out of', len(df))
+
+        except Exception as exc:
+            print('error reading path', game_path, exc)
+            continue
+
+    all_games_df = pd.concat(all_games).reset_index(drop=True)
+
+    if 'rel_frame' not in all_games_df.columns:
+        all_games_df['rel_frame'] = all_games_df['time_from_max_hand'].copy()
+        all_games_df['rel_frame'] = all_games_df.groupby('org_movement_id')['rel_frame'].transform(get_relative_frame)
+
+    return all_games_df
+
+
+def load_data_into_analysis_dict(
+        player_metadata: PlayerMetadata,
+        df: Optional[pd.DataFrame] = None,
+        df_mean: Optional[pd.DataFrame] = None,
+        df_std: Optional[pd.DataFrame] = None
+) -> dict:
+    print('Loading player data into analysis dict', player_metadata)
+
+    analysis_dict = {
+        'mlbam_player_id': player_metadata.mlbam_player_ids[0] if player_metadata.mlbam_player_ids else None,
+        'session_date': player_metadata.session_dates[0] if player_metadata.session_dates else None,
+        'game_pk': player_metadata.game_pks[0] if player_metadata.game_pks else None,
+        'mlb_play_guid': player_metadata.mlb_play_guid,
+        's3_prefix': player_metadata.s3_prefix
+    }
+
+    if df is None:
+        print('Downloading data...')
+        df = wr.s3.read_csv(analysis_dict['s3_prefix'], index_col=[0])
+
+    if df_mean is None:
+        print('aggregating mean')
+        analysis_dict['df_mean'] = df.groupby('rel_frame').agg('mean', numeric_only=True).reset_index()
+
+    else:
+        analysis_dict['df_mean'] = df_mean
+
+    if df_std is None:
+        print('aggregating std')
+        analysis_dict['df_std'] = df.groupby('rel_frame').agg('std', numeric_only=True).reset_index()
+
+    else:
+        analysis_dict['df_std'] = df_std
+
+    if analysis_dict['mlb_play_guid'] is None:
+        mlb_play_guid = list(df['org_movement_id'].unique())[0]
+        analysis_dict['mlb_play_guid'] = mlb_play_guid
+
+    else:
+        mlb_play_guid = analysis_dict['mlb_play_guid']
+
+    analysis_dict['df'] = df.loc[df['org_movement_id'] == mlb_play_guid]
+
+    return analysis_dict
 
 
 def list_chunks(lst: List[Any], n: int) -> Generator[List[Any], None, None]:

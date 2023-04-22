@@ -1,3 +1,4 @@
+awswrangler
+matplotlib
 plotly
-pandas
-boto3
+
