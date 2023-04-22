@@ -131,7 +131,8 @@ def load_data_into_analysis_dict(
         player_metadata: PlayerMetadata,
         df: Optional[pd.DataFrame] = None,
         df_mean: Optional[pd.DataFrame] = None,
-        df_std: Optional[pd.DataFrame] = None
+        df_std: Optional[pd.DataFrame] = None,
+        segment_label: str = None
 ) -> dict:
     print('Loading into dict player metadata:', player_metadata)
 
@@ -141,7 +142,8 @@ def load_data_into_analysis_dict(
         'game_pk': player_metadata.game_pks[0] if player_metadata.game_pks else None,
         'mlb_play_guid': player_metadata.mlb_play_guid,
         's3_prefix': player_metadata.s3_prefix,
-        'eye_hand_multiplier': player_metadata.s3_metadata.handedness.eye_hand_multiplier
+        'eye_hand_multiplier': player_metadata.s3_metadata.handedness.eye_hand_multiplier,
+        'segment_label': segment_label
     }
 
     if df is None:
