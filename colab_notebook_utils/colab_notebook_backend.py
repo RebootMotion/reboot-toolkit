@@ -160,7 +160,7 @@ def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
 
     all_games_df = pd.concat(all_games).reset_index(drop=True)
 
-    if 'rel_frame' not in all_games_df.columns:
+    if ('rel_frame' not in all_games_df.columns) and ('time_from_max_hand' in all_games_df.columns):
         print('Creating relative frame column...')
         all_games_df['rel_frame'] = all_games_df['time_from_max_hand'].copy()
         all_games_df['rel_frame'] = all_games_df.groupby('org_movement_id')['rel_frame'].transform(get_relative_frame)
@@ -226,6 +226,21 @@ def load_data_into_analysis_dict(
     analysis_dict['df'] = df.loc[df['org_movement_id'] == mlb_play_guid]
 
     return analysis_dict
+
+
+def merge_data_df_with_s3_keys(data_df: pd.DataFrame, s3_keys: list[str]) -> pd.DataFrame:
+    """
+    Add a column to a data df with the associated s3 key.
+
+    :param data_df: the pandas dataframe with an org_movement_id column
+    :param s3_keys: a list of s3 keys for files from the game
+    :return: dataframe with an s3 key column added
+    """
+
+    id_path_df = pd.DataFrame(
+        {'org_movement_id': key.split('/')[-1].split('_')[1], 's3_key': key} for key in s3_keys)
+
+    return data_df.merge(id_path_df, left_on='org_movement_id', right_on='org_movement_id', how='left')
 
 
 def list_chunks(lst: list, n: int) -> Generator[list, None, None]:
