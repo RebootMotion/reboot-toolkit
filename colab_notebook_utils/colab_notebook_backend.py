@@ -148,7 +148,11 @@ def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
         try:
             current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
 
+            current_game['session_date'] = pd.to_datetime(game_path.split('/')[-6])
+            print(current_game['session_date'].iloc[0])
+
             current_game['game_pk'] = game_path.split('/')[-5]
+            print(current_game['game_pk'].iloc[0])
 
             all_games.append(current_game)
 
@@ -238,7 +242,14 @@ def merge_data_df_with_s3_keys(data_df: pd.DataFrame, s3_keys: list[str]) -> pd.
     """
 
     id_path_df = pd.DataFrame(
-        {'org_movement_id': key.split('/')[-1].split('_')[1], 's3_key': key} for key in s3_keys)
+        {
+            'movement_num': key.split('/')[-1].split('_')[0],
+            'org_movement_id': key.split('/')[-1].split('_')[1],
+            's3_key': key,
+        } for key in s3_keys
+    )
+
+    id_path_df['movement_num'] = id_path_df['movement_num'].astype(int)
 
     return data_df.merge(id_path_df, left_on='org_movement_id', right_on='org_movement_id', how='left')
 
@@ -271,7 +282,8 @@ def get_available_joint_angles(analysis_dicts: list[dict]) -> list[str]:
         "org_movement_id",
         "event",
         "rel_frame",
-        "game_pk"
+        "game_pk",
+        "session_date"
     )
     joint_angle_names = [
         jnt
