@@ -3,6 +3,11 @@ from enum import Enum
 from dataclasses import dataclass
 
 
+class MocapType(str, Enum):
+    HAWKEYE = "hawkeye"
+    HAWKEYE_HFR = "hawkeyehfr"
+
+
 class MovementType(str, Enum):
     BASEBALL_PITCHING = "baseball-pitching"
     BASEBALL_HITTING = "baseball-hitting"
@@ -15,6 +20,15 @@ class Handedness(str, Enum):
     @property
     def eye_hand_multiplier(self) -> int:
         return 1 if self == Handedness.RIGHT else -1
+
+
+class FileType(str, Enum):
+    INVERSE_KINEMATICS = "inverse-kinematics"
+    IK_AT_TIME_POINTS = "ik-at-time-points"
+    METRICS_BASEBALL_PITCHING_V1 = "metrics-baseball-pitching-v1-0-0"
+    METRICS_BASEBALL_PITCHING_V2 = "metrics-baseball-pitching-v2-0-0"
+    METRICS_BASEBALL_HITTING_V1 = "metrics-baseball-hitting-v1-0-0"
+    METRICS_BASEBALL_HITTING_V2 = "metrics-baseball-hitting-v2-0-0"
 
 
 @dataclass

@@ -4,4 +4,4 @@ from .colab_notebook_backend import (download_s3_summary_df, filter_s3_summary_d
                                      load_data_into_analysis_dict, get_joint_plot, merge_data_df_with_s3_keys,
                                      get_relative_frame, list_chunks, save_figs_to_html)
 from .inverse_kinematics import (read_trc, inverse_kinematics)
-from .datatypes import (MovementType, Handedness, S3Metadata, PlayerMetadata)
+from .datatypes import (MocapType, MovementType, Handedness, FileType, S3Metadata, PlayerMetadata)
