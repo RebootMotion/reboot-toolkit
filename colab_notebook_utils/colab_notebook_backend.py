@@ -38,10 +38,10 @@ def create_interactive_widget(s3_df: pd.DataFrame) -> widgets.widgets.interactio
     return widgets.interactive(
         widget_interface,
         org_player_ids=widgets.SelectMultiple(
-            options=sorted(list(s3_df['org_player_id'].unique())), description='Players', disabled=False
+            options=sorted(list(s3_df['org_player_id'].unique())), description='Orgs Players', disabled=False
         ),
         session_nums=widgets.SelectMultiple(
-            options=sorted(list(s3_df['session_num'].unique())), description='Game PKs', disabled=False
+            options=sorted(list(s3_df['session_num'].unique())), description='Session Nums', disabled=False
         ),
         session_dates=widgets.SelectMultiple(
             options=sorted(list(s3_df['session_date'].astype(str).unique())), description='Dates', disabled=False
