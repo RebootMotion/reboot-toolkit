@@ -34,36 +34,49 @@ class FileType(str, Enum):
 @dataclass
 class S3Metadata:
     org_id: str
-    mocap_type: str
+    mocap_types: list[MocapType]
     movement_type: MovementType
     handedness: Handedness
-    file_type: str
+    file_type: FileType
 
     @property
     def s3_population_prefix(self) -> str:
-        return f"s3://reboot-motion-{self.org_id}/population/{self.mocap_type}/{self.movement_type}/" \
+        if len(self.mocap_types) > 1:
+            print('Input multiple mocap_types, setting the mocap type as the first item in the list')
+
+        mocap_type = self.mocap_types[0]
+
+        return f"s3://reboot-motion-{self.org_id}/population/{mocap_type}/{self.movement_type}/" \
                f"{self.file_type}/000000_{self.movement_type}_{self.handedness}_"
 
 
 @dataclass
 class PlayerMetadata:
-    mlbam_player_ids: Optional[list[str]] = None
+    org_player_ids: Optional[list[str]] = None
     session_dates: Optional[list[str]] = None
-    game_pks: Optional[list[str]] = None
+    session_nums: Optional[list[str]] = None
     session_date_start: Optional[str] = None
     session_date_end: Optional[str] = None
     year: Optional[int] = None
-    mlb_play_guid: Optional[str] = None
+    org_movement_id: Optional[str] = None
     s3_metadata: Optional[S3Metadata] = None
 
     @property
     def s3_prefix(self) -> str:
+
         assert self.s3_metadata, "Must set s3 metadata before generating s3 prefix"
-        if self.session_dates and self.game_pks and self.mlbam_player_ids:
-            if len(self.session_dates) == 1 and len(self.game_pks) == 1 and len(self.mlbam_player_ids) == 1:
-                return f's3://reboot-motion-{self.s3_metadata.org_id}/data_delivery/{self.s3_metadata.mocap_type}/' \
-                       f'{self.session_dates[0]}/{self.game_pks[0]}/{self.s3_metadata.movement_type}/' \
-                       f'{self.mlbam_player_ids[0]}/{self.s3_metadata.file_type}/'
+
+        if self.session_dates and self.session_nums and self.org_player_ids:
+            if len(self.session_dates) == 1 and len(self.session_nums) == 1 and len(self.org_player_ids) == 1:
+                if len(self.s3_metadata.mocap_types) > 1:
+                    print('Input multiple mocap_types, setting the mocap_type as the first item in the list')
+
+                mocap_type = self.s3_metadata.mocap_types[0]
+                return f's3://reboot-motion-{self.s3_metadata.org_id}/data_delivery/{mocap_type}/' \
+                       f'{self.session_dates[0]}/{self.session_nums[0]}/{self.s3_metadata.movement_type}/' \
+                       f'{self.org_player_ids[0]}/{self.s3_metadata.file_type}/'
+
+        print("Unable to construct path with input parameters")
 
 
 class Functions(str, Enum):

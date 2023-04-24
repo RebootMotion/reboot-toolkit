@@ -1,5 +1,7 @@
 awswrangler
 boto3
+IPython
+ipywidgets
 matplotlib
 numpy
 pandas

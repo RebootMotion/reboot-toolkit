@@ -1,15 +1,61 @@
 import awswrangler as wr
 import boto3
+import ipywidgets as widgets
 import json
 import numpy as np
 import os
 import pandas as pd
 import plotly
 
+from datetime import date
 from typing import Optional
 from collections.abc import Generator
 from . import utils as ut
 from .datatypes import Functions, InvocationTypes, S3Metadata, PlayerMetadata
+
+
+def widget_interface(
+        org_player_ids: tuple[str],
+        session_nums: tuple[str],
+        session_dates: tuple[str],
+        session_date_start: date,
+        session_date_end: date,
+        year: int
+) -> dict:
+    """Create a dict from kwargs input by an ipywidget."""
+    return {
+        "org_player_ids": list(org_player_ids) if org_player_ids else None,
+        "session_nums": list(session_nums) if session_nums else None,
+        "session_dates": list(session_dates) if session_dates else None,
+        "session_date_start": session_date_start,
+        "session_date_end": session_date_end,
+        "year": None if year == 0 else year
+    }
+
+
+def create_interactive_widget(s3_df: pd.DataFrame) -> widgets.widgets.interaction.interactive:
+    """Create an interactive widget for selecting data from an S3 summary dataframe."""
+    return widgets.interactive(
+        widget_interface,
+        org_player_ids=widgets.SelectMultiple(
+            options=sorted(list(s3_df['org_player_id'].unique())), description='Players', disabled=False
+        ),
+        session_nums=widgets.SelectMultiple(
+            options=sorted(list(s3_df['session_num'].unique())), description='Game PKs', disabled=False
+        ),
+        session_dates=widgets.SelectMultiple(
+            options=sorted(list(s3_df['session_date'].astype(str).unique())), description='Dates', disabled=False
+        ),
+        session_date_start=widgets.DatePicker(
+            description='Start Range', disabled=False
+        ),
+        session_date_end=widgets.DatePicker(
+            description='End Range', disabled=False
+        ),
+        year=widgets.IntText(
+            value=2023, min=2020, max=2024, step=1, description='Year (0 = All)', disabled=False
+        )
+    )
 
 
 def display_available_df_data(df: pd.DataFrame) -> None:
@@ -39,7 +85,7 @@ def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
         [f"s3://reboot-motion-{s3_metadata.org_id}/population/s3_summary.csv"], index_col=[0]
     )
 
-    s3_summary_df['s3_path_delivery'] = s3_summary_df['s3_path_delivery'] + s3_metadata.file_type + '/'
+    s3_summary_df['s3_path_delivery'] = s3_summary_df['s3_path_delivery'] + s3_metadata.file_type.value + '/'
 
     s3_summary_df['org_player_id'] = s3_summary_df['org_player_id'].astype('string')
 
@@ -74,17 +120,17 @@ def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -
     :return: the filtered dataframe that only includes rows related to the player metadata
     """
 
-    mask = (s3_df['mocap_type'] == player_metadata.s3_metadata.mocap_type) \
+    mask = s3_df['mocap_type'].isin(player_metadata.s3_metadata.mocap_types) \
         & (s3_df['movement_type'] == player_metadata.s3_metadata.movement_type)
 
-    if player_metadata.mlbam_player_ids:
-        mask = add_to_mask(mask, s3_df, 'org_player_id', player_metadata.mlbam_player_ids)
+    if player_metadata.org_player_ids:
+        mask = add_to_mask(mask, s3_df, 'org_player_id', player_metadata.org_player_ids)
 
     if player_metadata.session_dates:
         mask = add_to_mask(mask, s3_df, 'session_date', player_metadata.session_dates)
 
-    if player_metadata.game_pks:
-        mask = add_to_mask(mask, s3_df, 'session_num', player_metadata.game_pks)
+    if player_metadata.session_nums:
+        mask = add_to_mask(mask, s3_df, 'session_num', player_metadata.session_nums)
 
     if player_metadata.session_date_start is not None:
         mask = mask & (s3_df['session_date'] >= pd.Timestamp(player_metadata.session_date_start))
@@ -151,8 +197,8 @@ def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
             current_game['session_date'] = pd.to_datetime(game_path.split('/')[-6])
             print(current_game['session_date'].iloc[0])
 
-            current_game['game_pk'] = game_path.split('/')[-5]
-            print(current_game['game_pk'].iloc[0])
+            current_game['session_num'] = game_path.split('/')[-5]
+            print(current_game['session_num'].iloc[0])
 
             all_games.append(current_game)
 
@@ -193,10 +239,10 @@ def load_data_into_analysis_dict(
     print('Loading into dict player metadata:', player_metadata)
 
     analysis_dict = {
-        'mlbam_player_id': player_metadata.mlbam_player_ids[0] if player_metadata.mlbam_player_ids else None,
+        'mlbam_player_id': player_metadata.org_player_ids[0] if player_metadata.org_player_ids else None,
         'session_date': player_metadata.session_dates[0] if player_metadata.session_dates else None,
-        'game_pk': player_metadata.game_pks[0] if player_metadata.game_pks else None,
-        'mlb_play_guid': player_metadata.mlb_play_guid,
+        'game_pk': player_metadata.session_nums[0] if player_metadata.session_nums else None,
+        'mlb_play_guid': player_metadata.org_movement_id,
         's3_prefix': player_metadata.s3_prefix,
         'eye_hand_multiplier': player_metadata.s3_metadata.handedness.eye_hand_multiplier,
         'segment_label': segment_label
@@ -283,6 +329,7 @@ def get_available_joint_angles(analysis_dicts: list[dict]) -> list[str]:
         "event",
         "rel_frame",
         "game_pk",
+        "session_num",
         "session_date"
     )
     joint_angle_names = [
