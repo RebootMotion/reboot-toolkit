@@ -1,3 +1,10 @@
-plotly
-pandas
+awswrangler
 boto3
+IPython
+ipywidgets
+matplotlib
+numpy
+pandas
+plotly
+python-dotenv
+
