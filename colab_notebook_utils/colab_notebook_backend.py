@@ -8,10 +8,35 @@ import pandas as pd
 import plotly
 
 from datetime import date
-from typing import Optional
+from typing import Optional, Union
 from collections.abc import Generator
 from . import utils as ut
 from .datatypes import Functions, InvocationTypes, S3Metadata, PlayerMetadata
+
+
+def filter_df_on_custom_metadata(
+        data_df: pd.DataFrame,
+        custom_metadata_df: pd.DataFrame,
+        play_id_col: str,
+        metadata_col: str,
+        vals_to_keep: list[Union[int, float, str]]
+):
+    """
+    Filter segment dataframe using a dataframe of custom metadata with a play ID column for merging.
+
+    :param data_df: the segment dataframe
+    :param custom_metadata_df: the custom dataframe with a play ID column
+    :param play_id_col: the play ID column that can be merged with org_movement_id
+    :param metadata_col: the metadata column to use for filtering
+    :param vals_to_keep: list of values in the metadata column to keep after filtering
+    :return: the filtered input dataframe
+    """
+
+    data_df = data_df.merge(
+        custom_metadata_df[[play_id_col, metadata_col]], left_on='org_movement_id', right_on=play_id_col, how='left'
+    )
+
+    return data_df.loc[data_df[metadata_col].isin(vals_to_keep)].reset_index(drop=True)
 
 
 def widget_interface(
