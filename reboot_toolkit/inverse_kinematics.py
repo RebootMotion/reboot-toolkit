@@ -69,7 +69,7 @@ def read_trc(in_file_name: str):
 
 
 def inverse_kinematics(
-    session: boto3.session.Session,
+    session: boto3.Session,
     dom_hand: Optional[str],
     trc_df: pd.DataFrame,
     results_file_name: str,  # we assume movement ID is between the "_" characters

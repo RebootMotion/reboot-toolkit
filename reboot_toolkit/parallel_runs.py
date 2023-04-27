@@ -39,7 +39,7 @@ def file_exists(s3_client: Any, filename: str) -> bool:
 
 
 def gather_files(
-    session: boto3.session.Session,
+    session: boto3.Session,
     filenames: List[str],
     poll_interval_s: int = 2,
     max_attempts: int = 120,
@@ -66,7 +66,7 @@ def gather_files(
     logger.debug("Done gathering files")
 
 
-def dispatch(session: boto3.session.Session) -> List[str]:
+def dispatch(session: boto3.Session) -> List[str]:
     filenames = []
     for i in range(3):
         filename = f"{uuid4()}.txt"
@@ -93,7 +93,7 @@ def dispatch(session: boto3.session.Session) -> List[str]:
     return filenames
 
 
-def inverse_kinematics(session: boto3.session.Session) -> str:
+def inverse_kinematics(session: boto3.Session) -> str:
     # TODO partition problem
     filenames = dispatch(session)
     gather_files(session, filenames)

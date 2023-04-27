@@ -6,3 +6,4 @@ from .toolkit_backend import (download_s3_summary_df, filter_s3_summary_df, filt
                                      filter_df_on_custom_metadata)
 from .inverse_kinematics import (read_trc, inverse_kinematics)
 from .datatypes import (MocapType, MovementType, Handedness, FileType, S3Metadata, PlayerMetadata)
+from .utils import setup_aws

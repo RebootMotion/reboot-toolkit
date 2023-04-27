@@ -40,13 +40,20 @@ class S3Metadata:
     file_type: FileType
 
     @property
-    def s3_population_prefix(self) -> str:
+    def bucket(self) -> str:
+        return f"reboot-motion-{self.org_id}"
+    
+    @property
+    def mocap_type(self) -> str:
+        assert len(self.mocap_types) != 0, "Must set some mocap types"
         if len(self.mocap_types) > 1:
             print('Input multiple mocap_types, setting the mocap type as the first item in the list')
 
-        mocap_type = self.mocap_types[0]
+        return self.mocap_types[0]
 
-        return f"s3://reboot-motion-{self.org_id}/population/{mocap_type}/{self.movement_type}/" \
+    @property
+    def s3_population_prefix(self) -> str:
+        return f"s3://{self.bucket}/population/{self.mocap_type}/{self.movement_type}/" \
                f"{self.file_type}/000000_{self.movement_type}_{self.handedness}_"
 
 
@@ -63,7 +70,6 @@ class PlayerMetadata:
 
     @property
     def s3_prefix(self) -> str:
-
         assert self.s3_metadata, "Must set s3 metadata before generating s3 prefix"
 
         if self.session_dates and self.session_nums and self.org_player_ids:

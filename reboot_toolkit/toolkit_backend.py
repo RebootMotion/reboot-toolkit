@@ -181,7 +181,7 @@ def list_available_s3_keys(org_id: str, df: pd.DataFrame) -> list[str]:
     :param df: the dataframe with a column of s3_path_delivery values
     :return: list of all available s3 file paths
     """
-    s3_client = boto3.session.Session().client("s3")
+    s3_client = boto3.Session().client("s3")
 
     bucket = f"reboot-motion-{org_id}"
 
@@ -481,7 +481,7 @@ def filter_analysis_dicts(
     return res
 
 
-def handle_lambda_invocation(session: boto3.session.Session, payload: dict) -> str:
+def handle_lambda_invocation(session: boto3.Session, payload: dict) -> str:
     """
     Invoke a lambda function with the input payload.
 
@@ -512,7 +512,7 @@ def handle_lambda_invocation(session: boto3.session.Session, payload: dict) -> s
 
 
 def get_animation(
-        session: boto3.session.Session,
+        session: boto3.Session,
         analysis_dicts: list[dict],
         pop_mean_df: pd.DataFrame,
         pop_std_df: pd.DataFrame,
@@ -571,7 +571,7 @@ def get_animation(
 
 
 def get_joint_plot(
-        session: boto3.session.Session,
+        session: boto3.Session,
         analysis_dicts: list[dict],
         pop_mean_df: pd.DataFrame,
         pop_std_df: pd.DataFrame,

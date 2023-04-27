@@ -2,8 +2,45 @@ from uuid import UUID
 
 import boto3
 import pandas as pd
+import os
+from typing import Optional
+from getpass import getpass
 
 from .datatypes import Functions, InvocationTypes
+
+
+def setup_aws(
+        org_id: Optional[str] = None, 
+        aws_access_key_id: Optional[str] = None, 
+        aws_secret_access_key: Optional[str] = None, 
+        aws_default_region: Optional[str] = None
+    ) -> boto3.Session:
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    if 'ORG_ID' not in os.environ:
+        os.environ['ORG_ID'] = org_id or getpass('Enter reboot-motion org_id here:')
+
+    if 'AWS_ACCESS_KEY_ID' not in os.environ:
+        os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id or getpass('Enter AWS_ACCESS_KEY_ID here:')
+
+
+    if 'AWS_SECRET_ACCESS_KEY' not in os.environ:
+        os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key or getpass('Enter SECRET_ACCESS_KEY here:')
+
+
+    if 'AWS_DEFAULT_REGION' not in os.environ:
+        os.environ['AWS_DEFAULT_REGION'] = aws_default_region or getpass('Enter AWS_DEFAULT_REGION here:')
+
+    boto3_session = boto3.Session(
+        aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+        aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+        region_name=os.environ['AWS_DEFAULT_REGION']
+        )
+
+    print('Current Boto3 Session:')
+    print(boto3_session)
+    return boto3_session
 
 
 def serialize(obj):
@@ -24,7 +61,7 @@ def lambda_has_error(response: dict) -> bool:
 
 
 def invoke_lambda(
-    session: boto3.session.Session,
+    session: boto3.Session,
     lambda_function_name: Functions,
     invocation_type: InvocationTypes,
     lambda_payload: str,
