@@ -249,7 +249,7 @@ def load_data_into_analysis_dict(
         df: Optional[pd.DataFrame] = None,
         df_mean: Optional[pd.DataFrame] = None,
         df_std: Optional[pd.DataFrame] = None,
-        segment_label: str = None
+        segment_label: Optional[str] = None
 ) -> dict:
     """
     Load data from multiple games in a summary dict for further analysis.
@@ -264,10 +264,10 @@ def load_data_into_analysis_dict(
     print('Loading into dict player metadata:', player_metadata)
 
     analysis_dict = {
-        'mlbam_player_id': player_metadata.org_player_ids[0] if player_metadata.org_player_ids else None,
+        'player_id': player_metadata.org_player_ids[0] if player_metadata.org_player_ids else None,
         'session_date': player_metadata.session_dates[0] if player_metadata.session_dates else None,
         'game_pk': player_metadata.session_nums[0] if player_metadata.session_nums else None,
-        'mlb_play_guid': player_metadata.org_movement_id,
+        'play_guid': player_metadata.org_movement_id,
         's3_prefix': player_metadata.s3_prefix,
         'eye_hand_multiplier': player_metadata.s3_metadata.handedness.eye_hand_multiplier,
         'segment_label': segment_label
@@ -291,14 +291,14 @@ def load_data_into_analysis_dict(
     else:
         analysis_dict['df_std'] = df_std
 
-    if analysis_dict['mlb_play_guid'] is None:
-        mlb_play_guid = list(df['org_movement_id'].unique())[0]
-        analysis_dict['mlb_play_guid'] = mlb_play_guid
+    if analysis_dict['play_guid'] is None:
+        play_guid = list(df['org_movement_id'].unique())[0]
+        analysis_dict['play_guid'] = play_guid
 
     else:
-        mlb_play_guid = analysis_dict['mlb_play_guid']
+        play_guid = analysis_dict['play_guid']
 
-    analysis_dict['df'] = df.loc[df['org_movement_id'] == mlb_play_guid]
+    analysis_dict['df'] = df.loc[df['org_movement_id'] == play_guid]
 
     return analysis_dict
 
@@ -431,7 +431,7 @@ def filter_analysis_dicts(
         "RAJC",
     ]
 
-    keys_to_keep = {"mlb_play_guid", "mlbam_player_id"}
+    keys_to_keep = {"play_guid", "player_id"}
 
     if keep_df:
         keys_to_keep.add("df")
