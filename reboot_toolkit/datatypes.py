@@ -80,7 +80,7 @@ class PlayerMetadata:
 
 
 class Functions(str, Enum):
-    VISUALIZATIONS = "reboot_toolkit_visualizations"
+    VISUALIZATIONS = "reboot_toolkit_backend"
     INVERSE_KINEMATICS = "reboot_toolkit_ik"
 
 
