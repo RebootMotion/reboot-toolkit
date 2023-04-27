@@ -8,9 +8,9 @@ def get_requirements():
 
 
 setup(
-    name='colab-notebook-utils',
-    version='1.1.1',
-    packages=['colab_notebook_utils'],
+    name='reboot-toolkit',
+    version='2.0.0',
+    packages=['reboot_toolkit'],
     url='',
     license='',
     author='',

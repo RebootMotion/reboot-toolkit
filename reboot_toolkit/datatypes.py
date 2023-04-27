@@ -80,8 +80,8 @@ class PlayerMetadata:
 
 
 class Functions(str, Enum):
-    VISUALIZATIONS = "colab_notebook_backend"
-    INVERSE_KINEMATICS = "toolbox_ik"
+    VISUALIZATIONS = "reboot_toolkit_visualizations"
+    INVERSE_KINEMATICS = "reboot_toolkit_ik"
 
 
 class InvocationTypes(str, Enum):
