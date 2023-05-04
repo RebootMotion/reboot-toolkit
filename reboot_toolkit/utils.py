@@ -16,27 +16,32 @@ def setup_aws(
         aws_default_region: Optional[str] = None
     ) -> boto3.Session:
     from dotenv import load_dotenv
+
     load_dotenv()
 
     if 'ORG_ID' not in os.environ:
-        os.environ['ORG_ID'] = org_id or getpass('Enter reboot-motion org_id here:')
+        input_org_id = getpass(f'Input org_id here (or input empty string to use {org_id}):')
+
+        if len(input_org_id.strip()) == 0:
+            os.environ['ORG_ID'] = org_id
+
+        else:
+            os.environ['ORG_ID'] = input_org_id
 
     if 'AWS_ACCESS_KEY_ID' not in os.environ:
-        os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id or getpass('Enter AWS_ACCESS_KEY_ID here:')
-
+        os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id or getpass('Input AWS_ACCESS_KEY_ID here:')
 
     if 'AWS_SECRET_ACCESS_KEY' not in os.environ:
-        os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key or getpass('Enter SECRET_ACCESS_KEY here:')
-
+        os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key or getpass('Input SECRET_ACCESS_KEY here:')
 
     if 'AWS_DEFAULT_REGION' not in os.environ:
-        os.environ['AWS_DEFAULT_REGION'] = aws_default_region or getpass('Enter AWS_DEFAULT_REGION here:')
+        os.environ['AWS_DEFAULT_REGION'] = aws_default_region or getpass('Input AWS_DEFAULT_REGION here:')
 
     boto3_session = boto3.Session(
         aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
         aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
         region_name=os.environ['AWS_DEFAULT_REGION']
-        )
+    )
 
     print('Current Boto3 Session:')
     print(boto3_session)
