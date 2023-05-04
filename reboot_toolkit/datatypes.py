@@ -1,6 +1,6 @@
-from typing import Optional
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
+from typing import Optional
 
 
 class MocapType(str, Enum):
@@ -86,7 +86,7 @@ class PlayerMetadata:
 
 
 class Functions(str, Enum):
-    VISUALIZATIONS = "reboot_toolkit_backend"
+    BACKEND = "reboot_toolkit_backend"
     INVERSE_KINEMATICS = "reboot_toolkit_ik"
 
 

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(get_log_level())
 
 
-def read_trc(in_file_name: str):
+def read_trc(in_file_name: str) -> pd.DataFrame:
     trc_df = pd.read_csv(in_file_name, sep='\t', header=4, dtype=np.float32)
 
     n_lines = 4

@@ -1,17 +1,18 @@
+import json
+import os
+from collections.abc import Generator
+from datetime import date
+from typing import Optional, Union
+
 import awswrangler as wr
 import boto3
 import ipywidgets as widgets
-import json
 import numpy as np
-import os
 import pandas as pd
 import plotly
 
-from datetime import date
-from typing import Optional, Union
-from collections.abc import Generator
 from . import utils as ut
-from .datatypes import Functions, InvocationTypes, S3Metadata, PlayerMetadata
+from .datatypes import Functions, InvocationTypes, PlayerMetadata, S3Metadata
 
 
 def filter_df_on_custom_metadata(
@@ -494,7 +495,7 @@ def handle_lambda_invocation(session: boto3.Session, payload: dict) -> str:
     print('Sending to AWS...')
     response = ut.invoke_lambda(
         session=session,
-        lambda_function_name=Functions.VISUALIZATIONS,
+        lambda_function_name=Functions.BACKEND,
         invocation_type=InvocationTypes.SYNC,
         lambda_payload=payload,
     )
