@@ -87,6 +87,7 @@ class PlayerMetadata:
 
 class Functions(str, Enum):
     BACKEND = "reboot_toolkit_backend"
+    BACKEND_DEV = "reboot_toolkit_backend_dev"
     INVERSE_KINEMATICS = "reboot_toolkit_ik"
 
 

@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import time
 from typing import Any, Dict, Generator, List, Optional
 from uuid import uuid4
 
@@ -75,7 +74,7 @@ def inverse_kinematics(
     results_file_name: str,  # we assume movement ID is between the "_" characters
     movement_id: Optional[str],
     movement_type: str,
-) -> str:
+) -> pd.DataFrame | dict:
     print("Running inverse kinematics, this can take over 30s to run...")
     args = {
         "dom_hand": dom_hand,
