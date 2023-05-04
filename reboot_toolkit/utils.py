@@ -1,13 +1,16 @@
+import logging
+import os
+from getpass import getpass
+from typing import Any, Optional
 from uuid import UUID
 
 import boto3
-from dotenv import load_dotenv, dotenv_values
 import pandas as pd
-import os
-from typing import Optional, Any
-from getpass import getpass
+from dotenv import dotenv_values, load_dotenv
 
 from .datatypes import Functions, InvocationTypes
+
+logger = logging.getLogger(__name__)
 
 
 def setup_aws(
@@ -107,13 +110,18 @@ def invoke_lambda_local(
     invocation_type: InvocationTypes,
     lambda_payload: str,
 ) -> dict:
-    import requests
     from unittest.mock import Mock
+
+    import requests
 
     url = "http://localhost:9000/2015-03-31/functions/function/invocations"
     res = requests.post(url, data=lambda_payload)
 
     text = res.text
     mock_res = {'Payload': Mock(read=Mock(return_value=text)), 'StatusCode': 200}
+
+    if "errorMessage" in res.text:
+        mock_res["FunctionError"] = "error!"
+
 
     return mock_res

@@ -137,4 +137,6 @@ dmypy.json
 /.idea/vcs.xml
 
 # User
-001_baseball_pitching_right_handed.trc
+/001_baseball_pitching_right_handed.trc
+/recommendation_metrics.csv
+.env*
