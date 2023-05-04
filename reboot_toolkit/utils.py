@@ -20,7 +20,7 @@ def setup_aws(
     load_dotenv()
 
     if 'ORG_ID' not in os.environ:
-        input_org_id = getpass(f'Input reboot-motion org_id here (or press Enter to use {org_id}):')
+        input_org_id = getpass(f'Input org_id here (or input empty string to use {org_id}):')
 
         if len(input_org_id.strip()) == 0:
             os.environ['ORG_ID'] = org_id
