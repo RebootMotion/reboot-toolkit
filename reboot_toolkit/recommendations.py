@@ -19,6 +19,12 @@ def recommendation(
     mocap_type: MocapType,
     dom_hand: Handedness,
 ) -> pd.DataFrame | dict:
+    """
+    This is a recommendation engine with the goal of giving coaches guidance on how to help their players improve.
+    This recommendation engine is trained on player metrics as a predictor of fastball velocity for pitching and bat velocity for hitting. 
+    Using a random forest like model for training, the recommendation engine then extracts the impact of individual metrics on the overall result.
+    Given a player's metrics, the engine is then able to recommend aspects to focus on to improve the overall result.
+    """
     args = {
         "metrics_df": metrics_df,
         "movement_type": movement_type,
