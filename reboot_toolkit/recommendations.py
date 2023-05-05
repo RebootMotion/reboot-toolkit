@@ -29,7 +29,7 @@ def recommendation(
     payload = json.dumps(payload, default=ut.serialize)
     response = ut.invoke_lambda(
         session=session,
-        lambda_function_name=Functions.BACKEND_DEV,
+        lambda_function_name=Functions.BACKEND,
         invocation_type=InvocationTypes.SYNC,
         lambda_payload=payload,
     )
