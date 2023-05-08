@@ -10,6 +10,7 @@ import ipywidgets as widgets
 import numpy as np
 import pandas as pd
 import plotly
+import plotly.graph_objects as go
 
 from . import utils as ut
 from .datatypes import Functions, InvocationTypes, PlayerMetadata, S3Metadata
@@ -482,7 +483,7 @@ def filter_analysis_dicts(
     return res
 
 
-def handle_lambda_invocation(session: boto3.Session, payload: dict) -> str:
+def handle_lambda_invocation(session: boto3.Session, payload: dict) -> go.Figure:
     """
     Invoke a lambda function with the input payload.
 
@@ -522,7 +523,7 @@ def get_animation(
         plot_joint_angle_mean: bool,
         frame_step: int = 25,
         downsample_data: int = 2,
-) -> str:
+) -> go.Figure:
     """
     Use the input data to retrieve the synchronized skeleton and joint angle animation from AWS.
 
@@ -535,7 +536,7 @@ def get_animation(
     :param plot_joint_angle_mean: whether to plot the joint angle mean or the joint angle for the specific pitch
     :param frame_step: the number of frames between animation time points
     :param downsample_data: by how much to downsample the data
-    :return: the serialized plotly animation figure
+    :return: the plotly animation figure
     """
     times = analysis_dicts[0]["df"][time_column].tolist()[:: int(frame_step)]
 
@@ -586,7 +587,7 @@ def get_joint_plot(
             "rgb(148, 103, 189)",
         ),
         downsample_data: int = 2,
-) -> str:
+) -> go.Figure:
     """
     Plot a selection of joint angles on a plotly 2d scatter plot.
 
@@ -598,7 +599,7 @@ def get_joint_plot(
     :param joint_angles: the list of joint angles to plot
     :param plot_colors: the colors to use in the plot
     :param downsample_data: by how much to downsample the input data
-    :return: the serialized 2d plotly joint plot
+    :return: the 2d plotly joint plot
     """
     pop_df = filter_pop_df(
         pop_mean_df,
