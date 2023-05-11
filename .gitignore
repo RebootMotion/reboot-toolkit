@@ -135,6 +135,7 @@ dmypy.json
 /.idea/inspectionProfiles/profiles_settings.xml
 /.idea/inspectionProfiles/Project_Default.xml
 /.idea/vcs.xml
+/.idea/reboot-toolkit.iml
 
 # User
 /001_baseball_pitching_right_handed.trc
