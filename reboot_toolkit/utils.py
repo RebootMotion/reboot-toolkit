@@ -40,6 +40,9 @@ def setup_aws(
         region_name=os.environ['AWS_DEFAULT_REGION']
     )
 
+    print('Org ID:')
+    print(os.environ['ORG_ID'])
+    print()
     print('Current Boto3 Session:')
     print(boto3_session)
     return boto3_session
