@@ -221,10 +221,12 @@ def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
         try:
             current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
 
-            current_game['session_date'] = pd.to_datetime(game_path.split('/')[-6])
+            session_date_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 8)][0]
+            current_game['session_date'] = pd.to_datetime(game_path.split('/')[session_date_idx])
             print(current_game['session_date'].iloc[0])
 
-            current_game['session_num'] = game_path.split('/')[-5]
+            session_num_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 6)][0]
+            current_game['session_num'] = game_path.split('/')[session_num_idx]
             print(current_game['session_num'].iloc[0])
 
             all_games.append(current_game)
