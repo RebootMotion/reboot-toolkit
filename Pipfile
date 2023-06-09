@@ -8,14 +8,14 @@ awswrangler = "*"
 boto3 = "*"
 ipython = "*"
 ipywidgets = "*"
+jupyterlite-core = "*"
+jupyterlite-pyodide-kernel = "*"
+jupyterlab-open-url-parameter = "*"
 matplotlib = "*"
 numpy = "*"
 pandas = "*"
 plotly = "*"
 python-dotenv = "*"
-jupyterlite-core = "*"
-jupyterlite-pyodide-kernel = "*"
-jupyterlab-open-url-parameter = "*"
 
 [dev-packages]
 
