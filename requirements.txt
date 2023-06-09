@@ -4,7 +4,9 @@ ipython
 ipywidgets 
 jupyterlite-core 
 jupyterlite-pyodide-kernel 
+jupyterlab
 jupyterlab-open-url-parameter 
+jupyterlab-server
 matplotlib 
 numpy 
 pandas 
