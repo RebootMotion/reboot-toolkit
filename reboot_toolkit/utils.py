@@ -9,6 +9,7 @@ import pandas as pd
 from dotenv import dotenv_values, load_dotenv
 
 from .datatypes import Functions, InvocationTypes
+from mlb_statsapi import GameRequest, Game
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,24 @@ def setup_aws(
     print('Current Boto3 Session:')
     print(boto3_session)
     return boto3_session
+
+
+def decorate_primary_segment_df_with_stats_api(primary_segment_data_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Decorate Reboot Motion play by play metrics with additional data from stats API
+    """
+    game_pks = primary_segment_data_df['session_num'].unique()
+    all_game_metrics = None
+    for game_pk in game_pks:
+        print(f"Processing game: {game_pk}")
+        game_request = GameRequest(game_pk=game_pk)
+        game_data: Game = game_request.make_request()
+        game_df = game_data.get_filtered_pitch_metrics_by_play_id_as_df(play_ids=primary_segment_data_df[primary_segment_data_df['session_num'] == game_pk]["org_movement_id"].tolist())
+        if all_game_metrics is None:
+            all_game_metrics = game_df
+        else:
+            all_game_metrics = pd.concat([all_game_metrics, game_df])
+    return primary_segment_data_df.merge(all_game_metrics, how='left', left_on='org_movement_id', right_index=True)
 
 
 def serialize(obj):
@@ -107,6 +126,5 @@ def invoke_lambda_local(
 
     if "errorMessage" in res.text:
         mock_res["FunctionError"] = "error!"
-
 
     return mock_res
