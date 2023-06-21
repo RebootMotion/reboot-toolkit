@@ -26,6 +26,8 @@ class FileType(str, Enum):
     INVERSE_KINEMATICS = "inverse-kinematics"
     IK_AT_TIME_POINTS = "ik-at-time-points"
     MOMENTUM_ENERGY = "momentum-energy"
+    HITTING_CALCULATED_SERIES = "hitting-processed-series"
+    HITTING_CALCULATED_METRICS = "hitting-processed-metrics"
     METRICS_BASEBALL_PITCHING_V1 = "metrics-baseball-pitching-v1-0-0"
     METRICS_BASEBALL_PITCHING_V2 = "metrics-baseball-pitching-v2-0-0"
     METRICS_BASEBALL_HITTING_V1 = "metrics-baseball-hitting-v1-0-0"
