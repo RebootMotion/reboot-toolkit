@@ -60,9 +60,9 @@ def widget_interface(
     }
 
 
-def create_interactive_widget(s3_df: pd.DataFrame) -> widgets.widgets.interaction.interactive:
+def create_interactive_widget(s3_df: pd.DataFrame) -> widgets.VBox:
     """Create an interactive widget for selecting data from an S3 summary dataframe."""
-    return widgets.interactive(
+    w1 =  widgets.interactive(
         widget_interface,
         org_player_ids=widgets.SelectMultiple(
             options=sorted(list(s3_df['org_player_id'].unique())), description='Orgs Players', disabled=False
@@ -83,6 +83,20 @@ def create_interactive_widget(s3_df: pd.DataFrame) -> widgets.widgets.interactio
             value=2023, min=2020, max=2024, step=1, description='Year (0 = All)', disabled=False
         )
     )
+    w2 = widgets.Button(
+        description='Submit',
+        disabled=False,
+        button_style='success', # 'success', 'info', 'warning', 'danger' or ''
+        tooltip='Submit',
+        icon='check' # (FontAwesome names without the `fa-` prefix)
+    )
+    w3 = widgets.Output(layout={'border': '1px solid black'})
+    def f(_):
+        with w3:
+            w3.clear_output()
+            print(w1.result)
+    w2.on_click(f)
+    return widgets.VBox([widgets.Label("Populate any subset of the filters. Rerun cell to clear selection"), w1, w2, w3])
 
 
 def display_available_df_data(df: pd.DataFrame) -> None:
