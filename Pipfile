@@ -1,0 +1,26 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+awswrangler = "*"
+boto3 = "*"
+ipython = "*"
+ipywidgets = "*"
+jupyterlite-core = "*"
+jupyterlite-pyodide-kernel = "*"
+jupyterlab = "*"
+jupyterlab-open-url-parameter = "*"
+jupyterlab-server = "*"
+matplotlib = "*"
+numpy = "*"
+pandas = "*"
+plotly = "*"
+python-dotenv = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.9"
+python_full_version = "3.9.16"
