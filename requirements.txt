@@ -12,3 +12,4 @@ numpy
 pandas 
 plotly 
 python-dotenv 
+git+https://github.com/RebootMotion/reboot-toolkit.git@v2.3.2#egg=reboot_toolkit
