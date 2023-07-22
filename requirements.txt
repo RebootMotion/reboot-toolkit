@@ -5,6 +5,7 @@ ipywidgets
 matplotlib
 numpy
 pandas
+pandasai
 plotly
 python-dotenv
 
