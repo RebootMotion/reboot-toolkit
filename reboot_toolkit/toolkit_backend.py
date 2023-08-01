@@ -232,24 +232,68 @@ def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
 
     for i, game_path in enumerate(game_paths):
 
-        try:
-            current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
+        if 'hitting-processed-series' in game_path:
+            try:
+                swing_filenames = wr.s3.list_objects(game_path)
+                swing_dfs = []
+                for swing_filename in swing_filenames:
+                    swing_df = wr.s3.read_csv(swing_filename, index_col=[0], use_threads=True).dropna(axis=1, how='all')
 
-            session_date_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 8)][0]
-            current_game['session_date'] = pd.to_datetime(game_path.split('/')[session_date_idx])
-            print(current_game['session_date'].iloc[0])
+                    basepath = os.path.join(*swing_filename.split('/')[1:-2])
+                    movement_id = os.path.basename(swing_filename)[:-8]
+                    org_movement_id = movement_id.split('_')[-1]
+                    
+                    metrics_csv_filename = os.path.join('s3://',basepath,'hitting-processed-metrics',f'{movement_id}_bhm.csv')
 
-            session_num_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 6)][0]
-            current_game['session_num'] = game_path.split('/')[session_num_idx]
-            print(current_game['session_num'].iloc[0])
+                    if not 'time' in swing_df:
+                        metrics_df = wr.s3.read_csv(metrics_csv_filename)
+                        
+                        swing_df['time'] = (np.arange(swing_df.shape[0]) / 300).round(5)
+                        
+                        if not np.isnan(metrics_df.loc[0,'impact_event']):
+                            end_index = int(metrics_df.loc[0,'impact_event'])
+                        else:
+                            end_index = int(metrics_df.loc[0,'peak_velocity_event'])
+                            
+                        swing_df['time_from_swing_end'] = (swing_df['time'].values - swing_df['time'].values[end_index]).round(5)
+                        swing_df['rel_frame'] = (np.arange(swing_df.shape[0]) - end_index).astype(int)
+                            
+                        foot_down = int(metrics_df.loc[0,'foot_down_event'])
+                        norm_time_step = 100 / (end_index - foot_down)
+                        
+                        swing_df['norm_time'] = ((np.arange(swing_df.shape[0]) - foot_down) * norm_time_step).round(5)
+                        
+                        swing_df['org_movement_id'] = org_movement_id
+                        
+                    swing_dfs.append(swing_df)
+                    
+                current_game = pd.concat(swing_dfs)
+                all_games.append(current_game)
 
-            all_games.append(current_game)
+                print('Loaded path:', game_path, '-', i + 1, 'out of', len(game_paths))
 
-            print('Loaded path:', game_path, '-', i + 1, 'out of', len(game_paths))
+            except Exception as exc:
+                print('Error reading path', game_path, exc)
+                continue
+        else:
+            try:
+                current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
 
-        except Exception as exc:
-            print('Error reading path', game_path, exc)
-            continue
+                session_date_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 8)][0]
+                current_game['session_date'] = pd.to_datetime(game_path.split('/')[session_date_idx])
+                print(current_game['session_date'].iloc[0])
+
+                session_num_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 6)][0]
+                current_game['session_num'] = game_path.split('/')[session_num_idx]
+                print(current_game['session_num'].iloc[0])
+
+                all_games.append(current_game)
+
+                print('Loaded path:', game_path, '-', i + 1, 'out of', len(game_paths))
+
+            except Exception as exc:
+                print('Error reading path', game_path, exc)
+                continue
 
     all_games_df = pd.concat(all_games).reset_index(drop=True)
 
