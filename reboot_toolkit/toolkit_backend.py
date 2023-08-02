@@ -242,10 +242,9 @@ def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
                     basepath = os.path.join(*swing_filename.split('/')[1:-2])
                     movement_id = os.path.basename(swing_filename)[:-8]
                     org_movement_id = movement_id.split('_')[-1]
-                    
-                    metrics_csv_filename = os.path.join('s3://',basepath,'hitting-processed-metrics',f'{movement_id}_bhm.csv')
 
                     if not 'time' in swing_df:
+                        metrics_csv_filename = os.path.join('s3://',basepath,'hitting-processed-metrics',f'{movement_id}_bhm.csv')
                         metrics_df = wr.s3.read_csv(metrics_csv_filename)
                         
                         swing_df['time'] = (np.arange(swing_df.shape[0]) / 300).round(5)
@@ -268,22 +267,14 @@ def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
                     swing_dfs.append(swing_df)
                     
                 current_game = pd.concat(swing_dfs)
-                
+
             elif 'hitting-processed-metrics' in game_path:
                 swing_filenames = wr.s3.list_objects(game_path)
-                swing_dfs = []
-                for swing_filename in swing_filenames:
-                    swing_df = wr.s3.read_csv(swing_filename, index_col=[0], use_threads=True).dropna(axis=1, how='all')
-                    
-                    if 'org_movement_id' not in swing_df:
-                        movement_id = os.path.basename(swing_filename)[:-8]
-                        org_movement_id = movement_id.split('_')[-1]
+                current_game = wr.s3.read_csv(swing_filenames, index_col=[0], use_threads=True).dropna(axis=1, how='all')
 
-                        swing_df['org_movement_id'] = org_movement_id
-                    
-                    swing_dfs.append(swing_df)
-
-                current_game = pd.concat(swing_dfs)
+                if 'org_movement_id' not in current_game:
+                    org_movement_ids = [os.path.basename(swing_filename).split('_')[1] for swing_filename in swing_filenames]
+                    current_game['org_movement_id'] = org_movement_ids
 
             else:
                 current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
