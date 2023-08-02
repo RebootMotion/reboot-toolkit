@@ -270,7 +270,7 @@ def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
 
             elif 'hitting-processed-metrics' in game_path:
                 swing_filenames = wr.s3.list_objects(game_path)
-                current_game = wr.s3.read_csv(swing_filenames, index_col=[0], use_threads=True).dropna(axis=1, how='all')
+                current_game = wr.s3.read_csv(swing_filenames, use_threads=True).dropna(axis=1, how='all')
 
                 if 'org_movement_id' not in current_game:
                     org_movement_ids = [os.path.basename(swing_filename).split('_')[1] for swing_filename in swing_filenames]
