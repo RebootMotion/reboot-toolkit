@@ -243,7 +243,7 @@ def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
                     movement_id = os.path.basename(swing_filename)[:-8]
                     org_movement_id = movement_id.split('_')[-1]
 
-                    if not 'time' in swing_df.columns:
+                    if 'time' not in swing_df.columns:
                         metrics_csv_filename = os.path.join('s3://',basepath,'hitting-processed-metrics',f'{movement_id}_bhm.csv')
                         metrics_df = wr.s3.read_csv(metrics_csv_filename)
                         
