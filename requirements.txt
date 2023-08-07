@@ -6,5 +6,6 @@ matplotlib
 numpy
 pandas
 plotly
+pygwalker
 python-dotenv
 
