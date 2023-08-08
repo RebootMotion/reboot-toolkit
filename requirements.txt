@@ -1,4 +1,5 @@
 awswrangler
+autoviz
 boto3
 IPython
 ipywidgets
