@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from getpass import getpass
@@ -22,28 +23,34 @@ def setup_aws(
         aws_session_token: Optional[str] = None,
     ) -> boto3.Session:
     load_dotenv()
+    credentials = getpass('Input json string containing your credentials')
+    parse_credentials = None
+
+    if not credentials.strip():
+        if not aws_access_key_id:
+            aws_access_key_id = getpass('Input AWS_ACCESS_KEY_ID here:')
+        if not aws_secret_access_key:
+            aws_secret_access_key = getpass('Input AWS_SECRET_ACCESS_KEY here:')
+        if not aws_default_region:
+            aws_default_region = getpass('Input AWS_DEFAULT_REGION here:')
+        if not aws_session_token:
+            aws_session_token = getpass('Input AWS_SESSION_TOKEN here:')
+
+    parse_credentials = json.loads(credentials)
+
 
     if 'ORG_ID' not in os.environ:
         input_org_id = getpass(f'Input org_id here (or input empty string to use {org_id}):')
-        if len(input_org_id.strip()) == 0:
-            os.environ['ORG_ID'] = org_id
+        if not input_org_id.strip():
+            os.environ['ORG_ID'] = parse_credentials["org_id"]
         else:
             os.environ['ORG_ID'] = input_org_id
-    if 'AWS_ACCESS_KEY_ID' not in os.environ:
-        os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id or getpass('Input AWS_ACCESS_KEY_ID here:')
-    if 'AWS_SECRET_ACCESS_KEY' not in os.environ:
-        os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key or getpass('Input SECRET_ACCESS_KEY here:')
-    if 'AWS_SESSION_TOKEN' not in os.environ:
-        os.environ['AWS_SESSION_TOKEN'] = aws_session_token or getpass('Input AWS_SESSION_TOKEN here:')
-    if 'AWS_DEFAULT_REGION' not in os.environ:
-        os.environ['AWS_DEFAULT_REGION'] = aws_default_region or getpass('Input AWS_DEFAULT_REGION here:')
-
 
     boto3_session = boto3.Session(
-        aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
-        aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
-        aws_session_token=os.environ['AWS_SECRET_ACCESS_KEY'],
-        region_name=os.environ['AWS_DEFAULT_REGION'],
+        aws_access_key_id=aws_access_key_id or parse_credentials["aws_access_key_id"],
+        aws_secret_access_key=aws_secret_access_key or parse_credentials["aws_secret_access_key"],
+        aws_session_token=aws_session_token or parse_credentials["aws_session_token"],
+        region_name=aws_default_region or parse_credentials["aws_default_region"],
     )
 
     print('Org ID:')
