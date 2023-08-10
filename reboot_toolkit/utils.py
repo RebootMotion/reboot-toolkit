@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from getpass import getpass
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import boto3
@@ -15,14 +15,7 @@ from mlb_statsapi import GameRequest, Game
 logger = logging.getLogger(__name__)
 
 
-def setup_aws(
-            org_id: Optional[str] = None,
-            aws_access_key_id: Optional[str] = None,
-            aws_secret_access_key: Optional[str] = None,
-            aws_session_token: Optional[str] = None,
-            aws_default_region: Optional[str] = 'us-west-1'
-        ) -> boto3.Session:
-
+def setup_aws() -> boto3.Session:
     load_dotenv()
 
     if 'ORG_ID' not in os.environ:
