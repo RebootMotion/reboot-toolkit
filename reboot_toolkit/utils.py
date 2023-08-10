@@ -18,8 +18,7 @@ def setup_aws(
         org_id: Optional[str] = None, 
         aws_access_key_id: Optional[str] = None, 
         aws_secret_access_key: Optional[str] = None, 
-        aws_default_region: Optional[str] = None,
-        aws_session_token: Optional[str] = None,
+        aws_default_region: Optional[str] = None
     ) -> boto3.Session:
     load_dotenv()
 
@@ -33,17 +32,13 @@ def setup_aws(
         os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id or getpass('Input AWS_ACCESS_KEY_ID here:')
     if 'AWS_SECRET_ACCESS_KEY' not in os.environ:
         os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key or getpass('Input SECRET_ACCESS_KEY here:')
-    if 'AWS_SESSION_TOKEN' not in os.environ:
-        os.environ['AWS_SESSION_TOKEN'] = aws_session_token or getpass('Input AWS_SESSION_TOKEN here:')
     if 'AWS_DEFAULT_REGION' not in os.environ:
         os.environ['AWS_DEFAULT_REGION'] = aws_default_region or getpass('Input AWS_DEFAULT_REGION here:')
-
 
     boto3_session = boto3.Session(
         aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
         aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
-        aws_session_token=os.environ['AWS_SECRET_ACCESS_KEY'],
-        region_name=os.environ['AWS_DEFAULT_REGION'],
+        region_name=os.environ['AWS_DEFAULT_REGION']
     )
 
     print('Org ID:')
