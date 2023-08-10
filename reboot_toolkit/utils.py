@@ -22,6 +22,7 @@ def setup_aws(
         aws_default_region: Optional[str] = None,
         aws_session_token: Optional[str] = None,
     ) -> boto3.Session:
+    
     load_dotenv()
     credentials = getpass('Input json string containing your credentials')
     parse_credentials = None
