@@ -219,11 +219,15 @@ def list_available_s3_keys(org_id: str, df: pd.DataFrame) -> list[str]:
     return all_files
 
 
-def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
+def load_games_to_df_from_s3_paths(
+        game_paths: list[str], add_ik_joints: bool = False, add_elbow_var_val: bool = False
+) -> pd.DataFrame:
     """
     For a list of paths to the S3 folder of data for each game, load the data into a pandas dataframe.
 
     :param game_paths: list of paths to folders with data for a player
+    :param add_ik_joints: whether to add joints necessary to run analyses dependent on IK
+    :param add_elbow_var_val: whether to add elbow varus valgus columns set to 0 degrees
     :return: dataframe of all data from all games
     """
     game_paths = sorted(list(set(game_paths)))
@@ -286,6 +290,29 @@ def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
             session_num_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 6)][0]
             current_game['session_num'] = game_path.split('/')[session_num_idx]
             print(current_game['session_num'].iloc[0])
+
+            if add_ik_joints:
+                if 'time' in current_game.columns:
+                    for coord in ('X', 'Y', 'Z'):
+
+                        current_game[f'neck_{coord}'] = (current_game[f'LSJC_{coord}'] + current_game[f'RSJC_{coord}']) / 2.
+
+                        current_game[f'pelvis_{coord}'] = (current_game[f'LHJC_{coord}'] + current_game[f'RHJC_{coord}']) / 2.
+
+                        current_game[f'torso_{coord}'] = current_game[f'pelvis_{coord}']
+
+                        current_game[f'{coord.lower()}_translation'] = current_game[f'pelvis_{coord}']
+
+                    # set the target joint angle for the elbow varus valgus degree of freedom
+                    if add_elbow_var_val:
+                        current_game['right_elbow_var'] = 0
+
+                        current_game['left_elbow_var'] = 0
+
+                    print('Added IK joints')
+
+                else:
+                    print('Attempted to add IK joints, but they cannot be added to dataframes without time')
 
             all_games.append(current_game)
 

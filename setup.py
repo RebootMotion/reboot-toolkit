@@ -15,7 +15,7 @@ setup(
     license='',
     author='',
     author_email='',
-    description="Supporting utilities for Reboot Motion's interactive biomechanics notebook.",
+    description="Supporting utilities for Reboot Motion data analysis.",
     classifiers=[],
     install_requires=get_requirements(),
     entry_points={}
