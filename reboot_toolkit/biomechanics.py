@@ -1,26 +1,23 @@
+import boto3
 import mujoco
 import numpy as np
 import pandas as pd
 
+from typing import Union
 from xml.etree import ElementTree as ET
 
 from . import utils as ut
 
 
-def add_ik_joints(df, coords):
+def calc_dist_btwn(pd_object: Union[pd.Series, pd.DataFrame], begin_joint: str, end_joint: str) -> float:
+    """
+    Calculate the distance between two joints
 
-    for coord in coords:
-        if 'lEar_X' in df.columns:
-            df[f'SKULL_{coord}'] = (df[f'lEar_{coord}'] + df[f'rEar_{coord}']) / 2.
-
-        df[f'neck_{coord}'] = (df[f'LSJC_{coord}'] + df[f'RSJC_{coord}']) / 2.
-
-        df[f'pelvis_{coord}'] = (df[f'LHJC_{coord}'] + df[f'RHJC_{coord}']) / 2.
-
-        df[f'torso_{coord}'] = df[f'pelvis_{coord}']
-
-
-def calc_dist_btwn(pd_object, begin_joint, end_joint):
+    :param pd_object: the pandas dataframe or series with the data
+    :param begin_joint: the beginning joint in the calculation
+    :param end_joint: the ending joint in the calculation
+    :return: the distance between the joints, either the median of a series or the distance for a single value
+    """
 
     dist = np.sqrt(
         (pd_object[f"{end_joint}_X"] - pd_object[f"{begin_joint}_X"]) ** 2 +
@@ -34,7 +31,13 @@ def calc_dist_btwn(pd_object, begin_joint, end_joint):
     return dist
 
 
-def get_bone_lengths(pd_object):
+def get_bone_lengths(pd_object: Union[pd.Series, pd.DataFrame]):
+    """
+    Get all the bone lengths in an IK dataframe or series
+
+    :param pd_object: the IK DataFrame or Series
+    :return: dict of bone lengths
+    """
     return {
         'shoulders': calc_dist_btwn(pd_object, 'LSJC', 'RSJC'),
         'hips': calc_dist_btwn(pd_object, 'LHJC', 'RHJC'),
@@ -50,8 +53,15 @@ def get_bone_lengths(pd_object):
     }
 
 
-def scale_human_xml(ik_df, desired_mass, boto3_session):
+def scale_human_xml(ik_df: pd.DataFrame, desired_mass: float, boto3_session: boto3.Session) -> str:
+    """
+    Retrieve a scaled humanoid model from AWS, scaled in both length and mass
 
+    :param ik_df: the inverse kinematics data frame to use for calculating scaling factors
+    :param desired_mass: the desired mass to scale to
+    :param boto3_session: the boto3 session for accessing AWS
+    :return: the scaled MuJoCo XML model string
+    """
     args = {
         "bone_length_dict": get_bone_lengths(ik_df),
         "desired_mass": desired_mass
@@ -59,20 +69,18 @@ def scale_human_xml(ik_df, desired_mass, boto3_session):
 
     payload = {"function_name": "scale_human_xml", "args": args}
 
-    # lambda_client = boto3.session.Session().client("lambda")
-    #
-    # resp = lambda_client.invoke(
-    #     FunctionName='reboot_toolkit_backend_dev',
-    #     InvocationType="RequestResponse",
-    #     Payload=json.dumps(payload),
-    # )
-    #
-    # return json.loads(resp['Payload'].read())
     return ut.handle_lambda_invocation(boto3_session, payload)
 
 
-def get_model_info(human_model_xml_str, element_type, return_names=False):
+def get_model_info(human_model_xml_str: str, element_type: str, return_names: bool = False) -> Union[list, dict]:
+    """
+    Get the body or joint info for a MuJoCo XML model
 
+    :param human_model_xml_str: the overall model XML string
+    :param element_type: the element type to inspect (body or joint)
+    :param return_names: whether to return a list of names or a dict with all info
+    :return:
+    """
     if element_type not in {'body', 'joint'}:
         raise ValueError("element_type must be 'body' or 'joint'")
 
@@ -90,7 +98,21 @@ def get_model_info(human_model_xml_str, element_type, return_names=False):
     return model_dict
 
 
-def reorder_joint_angle_df_like_model(model, data, joint_angle_df, joint_angle_names):
+def reorder_joint_angle_df_like_model(
+        model: mujoco.MjModel,
+        data: mujoco.MjData,
+        ik_df: pd.DataFrame,
+        joint_angle_names: list[str]
+) -> pd.DataFrame:
+    """
+    Reorder the columns of an IK df to match the order of joints in MuJoCo so its easier to simulate
+
+    :param model: the MuJoCo model
+    :param data: the MuJoCo data element
+    :param ik_df: the IK dataframe
+    :param joint_angle_names: the joint angle names to order
+    :return: the reordered dataframe
+    """
 
     name_order = [None] * data.qpos.shape[0]
 
@@ -103,71 +125,4 @@ def reorder_joint_angle_df_like_model(model, data, joint_angle_df, joint_angle_n
                 model.jnt_qposadr[q_pos_id]
             ] = joint_angle_name
 
-    return joint_angle_df[name_order]
-
-
-def read_inverse_kinematics_internal(ik_file_path):
-    df = pd.read_csv(ik_file_path, index_col=[0]).apply(pd.to_numeric, errors='ignore')
-
-    df[['org_movement_id', 'movement_id']] = df[['org_movement_id', 'movement_id']].astype('string')
-
-    for coord in ('X', 'Y', 'Z'):
-        add_ik_joints(df, (coord,))
-
-        df[f'{coord.lower()}_translation'] = df[f'pelvis_{coord}']
-
-    return df
-
-
-def main():
-    import matplotlib.pyplot as plt
-
-    ik_df = read_inverse_kinematics_internal('/Users/jimmybuffi/Desktop/RebootMotion/mujoco/demo_ik_rha.csv.gz')
-    ik_df['right_elbow_var'] = 0  # set the target joint angle for the elbow varus valgus degrees of freedom
-    ik_df['left_elbow_var'] = 0
-
-    time_series = ik_df['time'].copy()
-    dt = ik_df['time'].diff().median()
-
-    model_xml_str = scale_human_xml(ik_df, 97.5)
-
-    joint_names = get_model_info(model_xml_str, 'joint', return_names=True)
-
-    model = mujoco.MjModel.from_xml_string(model_xml_str)
-    model.opt.timestep = dt
-
-    data = mujoco.MjData(model)
-
-    ik_df = reorder_joint_angle_df_like_model(model, data, ik_df, joint_names)
-    vel_df = ik_df.copy().apply(np.gradient, raw=True) / dt
-
-    q_force_inverse = []
-
-    for i, row_pos in ik_df.iterrows():
-
-        row_vel = vel_df.iloc[i]
-
-        data.qpos = row_pos.to_numpy()
-        data.qvel = row_vel.to_numpy()
-
-        mujoco.mj_step(model, data)
-        mujoco.mj_inverse(model, data)
-
-        q_force_inverse.append(data.qfrc_inverse.copy())
-
-    force_df = pd.DataFrame(data=q_force_inverse, columns=joint_names)
-    force_df['time'] = time_series
-
-    plt.figure()
-
-    plt.plot(force_df['x_translation'], label='x')
-    plt.plot(force_df['y_translation'], label='y')
-    plt.plot(force_df['z_translation'], label='z')
-
-    plt.legend()
-    plt.grid()
-    plt.show()
-
-
-if __name__ == '__main__':
-    main()
+    return ik_df[name_order]
