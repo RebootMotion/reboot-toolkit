@@ -1,3 +1,4 @@
+import mujoco
 import numpy as np
 import pandas as pd
 
@@ -120,7 +121,6 @@ def read_inverse_kinematics_internal(ik_file_path):
 
 def main():
     import matplotlib.pyplot as plt
-    import mujoco
 
     ik_df = read_inverse_kinematics_internal('/Users/jimmybuffi/Desktop/RebootMotion/mujoco/demo_ik_rha.csv.gz')
     ik_df['right_elbow_var'] = 0  # set the target joint angle for the elbow varus valgus degrees of freedom
