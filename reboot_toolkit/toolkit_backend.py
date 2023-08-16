@@ -543,36 +543,6 @@ def filter_analysis_dicts(
     return res
 
 
-def handle_lambda_invocation(session: boto3.Session, payload: dict) -> go.Figure:
-    """
-    Invoke a lambda function with the input payload.
-
-    :param session: the boto3 session info to use
-    :param payload: the lambda payload
-    :return: the serialized lambda response
-    """
-    payload = json.dumps(payload, default=ut.serialize)
-
-    print('Sending to AWS...')
-    response = ut.invoke_lambda(
-        session=session,
-        lambda_function_name=Functions.BACKEND,
-        invocation_type=InvocationTypes.SYNC,
-        lambda_payload=payload,
-    )
-
-    print('Reading Response...')
-    payload = response["Payload"].read()
-
-    if ut.lambda_has_error(response):
-        print(f"Error in calculation")
-        print(payload)
-        return payload
-
-    print("Returning Plotly figure...")
-    return plotly.io.from_json(json.loads(payload))
-
-
 def get_animation(
         session: boto3.Session,
         analysis_dicts: list[dict],
@@ -629,7 +599,7 @@ def get_animation(
 
     payload = {"function_name": "get_joint_angle_animation", "args": args}
 
-    return handle_lambda_invocation(session, payload)
+    return plotly.io.from_json(ut.handle_lambda_invocation(session, payload))
 
 
 def get_joint_plot(
@@ -688,7 +658,7 @@ def get_joint_plot(
 
     payload = {"function_name": "get_joint_angle_plots", "args": args}
 
-    return handle_lambda_invocation(session, payload)
+    return plotly.io.from_json(ut.handle_lambda_invocation(session, payload))
 
 
 def save_figs_to_html(
