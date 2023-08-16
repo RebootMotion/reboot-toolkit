@@ -4,6 +4,7 @@ boto3
 IPython
 ipywidgets
 matplotlib
+mjc_viewer
 mujoco
 numpy
 pandas
