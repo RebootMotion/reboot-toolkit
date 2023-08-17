@@ -1,7 +1,9 @@
+import json
 import logging
 import os
+
 from getpass import getpass
-from typing import Any, Optional
+from typing import Any, Optional, Union
 from uuid import UUID
 
 import boto3
@@ -128,3 +130,34 @@ def invoke_lambda_local(
         mock_res["FunctionError"] = "error!"
 
     return mock_res
+
+
+def handle_lambda_invocation(session: boto3.Session, payload: dict) -> Union[str, dict]:
+    """
+    Invoke a lambda function with the input payload.
+
+    :param session: the boto3 session info to use
+    :param payload: the lambda payload
+    :return: the serialized lambda response
+    """
+
+    payload = json.dumps(payload, default=serialize)
+
+    print('Sending to AWS...')
+    response = invoke_lambda(
+        session=session,
+        lambda_function_name=Functions.BACKEND,
+        invocation_type=InvocationTypes.SYNC,
+        lambda_payload=payload,
+    )
+
+    print('Reading Response...')
+    payload = response["Payload"].read()
+
+    if lambda_has_error(response):
+        print(f"Error in calculation:")
+        print(payload)
+        return payload
+
+    print("Returning AWS Response...")
+    return json.loads(payload)

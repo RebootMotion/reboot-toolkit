@@ -9,13 +9,13 @@ def get_requirements():
 
 setup(
     name='reboot-toolkit',
-    version='2.4.2',
+    version='2.5.0',
     packages=['reboot_toolkit'],
     url='',
     license='',
     author='',
     author_email='',
-    description="Supporting utilities for Reboot Motion's interactive biomechanics notebook.",
+    description="Supporting utilities for Reboot Motion data analysis.",
     classifiers=[],
     install_requires=get_requirements(),
     entry_points={}
