@@ -9,7 +9,7 @@ def get_requirements():
 
 setup(
     name='reboot-toolkit',
-    version='2.4.2',
+    version='2.5.0',
     packages=['reboot_toolkit'],
     url='',
     license='',
