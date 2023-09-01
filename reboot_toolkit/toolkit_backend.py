@@ -24,7 +24,7 @@ def find_player_matches(
 
     :param s3_df: the s3 summary dataframe
     :param name_to_match: the name to use to find a player match
-    :param match_threshold: the threshold above which to considera successful match
+    :param match_threshold: the threshold above which to consider a successful match
     :param max_results: the max number of results to return
     :return: dataframe of matched results
     """
