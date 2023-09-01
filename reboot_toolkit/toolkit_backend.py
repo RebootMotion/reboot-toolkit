@@ -1,4 +1,3 @@
-import json
 import os
 from collections.abc import Generator
 from datetime import date
@@ -12,8 +11,38 @@ import pandas as pd
 import plotly
 import plotly.graph_objects as go
 
+from rapidfuzz import fuzz
 from . import utils as ut
-from .datatypes import Functions, InvocationTypes, PlayerMetadata, S3Metadata
+from .datatypes import PlayerMetadata, S3Metadata
+
+
+def find_player_matches(
+        s3_df: pd.DataFrame, name_to_match: str, match_threshold: float = 50., max_results: int = 5
+) -> pd.DataFrame:
+    """
+    Use the rapid fuzz library to find all players matching an input name above a threshold.
+
+    :param s3_df: the s3 summary dataframe
+    :param name_to_match: the name to use to find a player match
+    :param match_threshold: the threshold above which to considera successful match
+    :param max_results: the max number of results to return
+    :return: dataframe of matched results
+    """
+
+    name_to_match = name_to_match.lower()
+
+    players_df = s3_df[['first_name', 'last_name', 'org_player_id']].copy().drop_duplicates(subset=['org_player_id'])
+
+    players_df['name'] = players_df['first_name'].str.lower() + ' ' + players_df['last_name'].str.lower()
+
+    players_df['match'] = players_df['name'].transform(lambda x: fuzz.ratio(x, name_to_match))
+
+    matched_results_df = players_df.loc[players_df['match'] > match_threshold]
+
+    if len(matched_results_df) > max_results:
+        matched_results_df = matched_results_df.iloc[:max_results]
+
+    return matched_results_df.sort_values(by='match', ascending=False, ignore_index=True)
 
 
 def filter_df_on_custom_metadata(

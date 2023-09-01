@@ -2,7 +2,7 @@ from .datatypes import (FileType, Handedness, MocapType, MovementType,
                         PlayerMetadata, S3Metadata)
 from .inverse_kinematics import inverse_kinematics, read_trc
 from .recommendations import recommendation, recommendation_violin_plot
-from .toolkit_backend import (create_interactive_widget,
+from .toolkit_backend import (find_player_matches, create_interactive_widget,
                               download_s3_summary_df, filter_analysis_dicts,
                               filter_df_on_custom_metadata, filter_pop_df,
                               filter_s3_summary_df, get_animation,

@@ -11,6 +11,7 @@ pandas
 plotly
 pygwalker
 python-dotenv
+rapidfuzz
 sweetviz
 tqdm
 
