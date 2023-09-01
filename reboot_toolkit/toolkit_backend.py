@@ -37,12 +37,14 @@ def find_player_matches(
 
     players_df['match'] = players_df['name'].transform(lambda x: fuzz.ratio(x, name_to_match))
 
-    matched_results_df = players_df.loc[players_df['match'] > match_threshold]
+    matched_results_df = players_df.loc[players_df['match'] > match_threshold].sort_values(
+        by='match', ascending=False, ignore_index=True
+    )
 
     if len(matched_results_df) > max_results:
         matched_results_df = matched_results_df.iloc[:max_results]
 
-    return matched_results_df.sort_values(by='match', ascending=False, ignore_index=True)
+    return matched_results_df
 
 
 def filter_df_on_custom_metadata(
