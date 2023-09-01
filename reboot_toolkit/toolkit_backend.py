@@ -446,13 +446,17 @@ def get_available_joint_angles(analysis_dicts: list[dict]) -> list[str]:
         "session_num",
         "session_date"
     )
-    joint_angle_names = [
+
+    df_columns = list(analysis_dicts[0]["df"])
+
+    ind_end = df_columns.index("time")
+
+    return [
         jnt
-        for jnt in analysis_dicts[0]["df"].columns
+        for jnt in df_columns[:ind_end]
         if not jnt.startswith(non_angle_col_prefixes)
         and not jnt.endswith(("_X", "_Y", "_Z", "_vel", "_acc"))
     ]
-    return joint_angle_names
 
 
 def filter_pop_df(
