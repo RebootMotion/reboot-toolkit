@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from collections.abc import Generator
 from datetime import date
@@ -51,8 +53,9 @@ def filter_df_on_custom_metadata(
         data_df: pd.DataFrame,
         custom_metadata_df: pd.DataFrame,
         play_id_col: str,
-        metadata_col: str,
-        vals_to_keep: list[Union[int, float, str]]
+        metadata_col: str | None,
+        vals_to_keep: list[Union[int, float, str]] | None,
+        drop_extra_cols: bool = False
 ):
     """
     Filter segment dataframe using a dataframe of custom metadata with a play ID column for merging.
@@ -62,14 +65,21 @@ def filter_df_on_custom_metadata(
     :param play_id_col: the play ID column that can be merged with org_movement_id
     :param metadata_col: the metadata column to use for filtering
     :param vals_to_keep: list of values in the metadata column to keep after filtering
+    :param drop_extra_cols: whether to drop all columns other than the column used for filtering
     :return: the filtered input dataframe
     """
 
+    if metadata_col is not None and len(metadata_col) > 0 and drop_extra_cols:
+        custom_metadata_df = custom_metadata_df[[play_id_col, metadata_col]].copy()
+
     data_df = data_df.merge(
-        custom_metadata_df[[play_id_col, metadata_col]], left_on='org_movement_id', right_on=play_id_col, how='left'
+        custom_metadata_df, left_on='org_movement_id', right_on=play_id_col, how='left'
     )
 
-    return data_df.loc[data_df[metadata_col].isin(vals_to_keep)].reset_index(drop=True)
+    if vals_to_keep:
+        return data_df.loc[data_df[metadata_col].isin(vals_to_keep)].copy().reset_index(drop=True)
+
+    return data_df
 
 
 def widget_interface(
