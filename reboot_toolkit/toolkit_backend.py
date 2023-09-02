@@ -74,7 +74,7 @@ def filter_df_on_custom_metadata(
 
     data_df = data_df.merge(
         custom_metadata_df, left_on='org_movement_id', right_on=play_id_col, how='left'
-    )
+    ).drop(columns=[col for col in custom_metadata_df.columns if col.lower().startswith('unnamed')])
 
     if vals_to_keep:
         return data_df.loc[data_df[metadata_col].isin(vals_to_keep)].copy().reset_index(drop=True)
