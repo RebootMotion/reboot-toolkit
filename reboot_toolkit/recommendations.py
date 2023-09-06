@@ -1,19 +1,37 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Generator, List, Optional
-from uuid import uuid4
 
 import boto3
-import numpy as np
 import pandas as pd
-from botocore.errorfactory import ClientError
 import plotly
 import plotly.graph_objects as go
 
 from . import utils as ut
 from .datatypes import (Functions, Handedness, InvocationTypes, MocapType,
                         MovementType)
+
+
+def handle_recommendation_mocap_type(metrics_df: pd.DataFrame, mocap_type: MocapType) -> str | MocapType:
+    """
+    Handle a mocap type of None or raise an exception for an invalid mocap type.
+
+    :param metrics_df: dataframe of Reboot Motion metrics
+    :param mocap_type: the mocap type enum
+    :return: a mocap type enum
+    """
+    if mocap_type is not None:
+        pass
+
+    elif mocap_type is None and len(metrics_df['mocap_type'].unique()) == 1:
+        mocap_type = metrics_df['mocap_type'].iloc[0]
+
+    else:
+        raise KeyError(
+            'input mocap_type not specified, and a unique mocap_type was not found in the file, please specify one'
+        )
+
+    return mocap_type
 
 
 def recommendation(
@@ -36,16 +54,8 @@ def recommendation(
     :param dom_hand: dominant hand for player
     :return: dataframe with recommendation information
     """
-    if mocap_type is not None:
-        pass
 
-    elif mocap_type is None and len(metrics_df['mocap_type'].unique()) == 1:
-        mocap_type = metrics_df['mocap_type'].iloc[0]
-
-    else:
-        raise KeyError(
-            'input mocap_type not specified, and a unique mocap_type was not found in the file, please specify one'
-        )
+    mocap_type = handle_recommendation_mocap_type(metrics_df, mocap_type)
 
     args = {
         "metrics_df": metrics_df,
@@ -75,7 +85,7 @@ def recommendation_violin_plot(
     session: boto3.Session,
     metrics_df: pd.DataFrame,
     movement_type: MovementType,
-    mocap_type: MocapType,
+    mocap_type: MocapType | None,
     dom_hand: Handedness,
     num_features: int = 5
 ) -> go.Figure | dict | None:
@@ -93,6 +103,8 @@ def recommendation_violin_plot(
     if num_features > 8:
         print(f"Please reduce number of features to <= 8 for AWS size limitations")
         return None
+
+    mocap_type = handle_recommendation_mocap_type(metrics_df, mocap_type)
     
     args = {
         "metrics_df": metrics_df,
