@@ -167,7 +167,7 @@ def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
         [f"s3://reboot-motion-{s3_metadata.org_id}/population/s3_summary.csv"], index_col=[0]
     )
 
-    s3_summary_df['s3_path_delivery'] = s3_summary_df['s3_path_delivery'] + s3_metadata.file_type.value + '/'
+    s3_summary_df['s3_path_delivery'] = s3_summary_df['s3_path_delivery'] + s3_metadata.file_type.value
 
     s3_summary_df['org_player_id'] = s3_summary_df['org_player_id'].astype('string')
 
@@ -328,9 +328,22 @@ def load_games_to_df_from_s3_paths(
             current_game['session_date'] = pd.to_datetime(game_path.split('/')[session_date_idx])
             print(current_game['session_date'].iloc[0])
 
-            session_num_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 6)][0]
-            current_game['session_num'] = game_path.split('/')[session_num_idx]
+            session_num_idx_list = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 6)]
+            if session_num_idx_list:
+                current_game['session_num'] = game_path.split('/')[session_num_idx_list[0]]
+
+            else:
+                current_game['session_num'] = None
             print(current_game['session_num'].iloc[0])
+
+            supported_mocap_types = ('hawkeye', 'hawkeyehfr')
+            mocap_type_list = [s for s in game_path.split('/') if any(mt in s for mt in supported_mocap_types)]
+            if mocap_type_list:
+                current_game['mocap_type'] = mocap_type_list[0]
+
+            else:
+                current_game['mocap_type'] = None
+            print(current_game['mocap_type'].iloc[0])
 
             if add_ik_joints:
                 if 'time' in current_game.columns:
