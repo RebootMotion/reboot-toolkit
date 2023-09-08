@@ -30,8 +30,10 @@ class FileType(str, Enum):
     HITTING_CALCULATED_METRICS = "hitting-processed-metrics"
     METRICS_BASEBALL_PITCHING_V1 = "metrics-baseball-pitching-v1-0-0"
     METRICS_BASEBALL_PITCHING_V2 = "metrics-baseball-pitching-v2-0-0"
+    METRICS_BASEBALL_PITCHING_V_ALL = "metrics-baseball-pitching"
     METRICS_BASEBALL_HITTING_V1 = "metrics-baseball-hitting-v1-0-0"
     METRICS_BASEBALL_HITTING_V2 = "metrics-baseball-hitting-v2-0-0"
+    METRICS_BASEBALL_HITTING_V_ALL = "metrics-baseball-hitting"
 
 
 @dataclass
