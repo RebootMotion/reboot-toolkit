@@ -324,13 +324,13 @@ def load_games_to_df_from_s3_paths(
             else:
                 if '/metrics-' in game_path and not game_path[-1].isdigit():
                     try:
-                        print('defaulting to v2 metrics')
+                        print('Defaulting to v2 metrics')
                         current_game = wr.s3.read_csv(
                             f"{game_path}-v2-0-0", index_col=[0], use_threads=True
                         ).dropna(axis=1, how='all')
 
                     except wr.exceptions.NoFilesFound:
-                        print('v2 metrics failed, falling back to v1 metrics')
+                        print('No v2 metrics found, falling back to v1 metrics')
                         current_game = wr.s3.read_csv(
                             f"{game_path}-v1-0-0", index_col=[0], use_threads=True
                         ).dropna(axis=1, how='all')
