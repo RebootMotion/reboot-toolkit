@@ -322,7 +322,20 @@ def load_games_to_df_from_s3_paths(
                     current_game['org_movement_id'] = org_movement_ids
 
             else:
-                current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
+                if '/metrics-' in game_path and not game_path[-1].isdigit():
+                    try:
+                        print('defaulting to v2 metrics')
+                        current_game = wr.s3.read_csv(
+                            f"{game_path}-v2-0-0", index_col=[0], use_threads=True
+                        ).dropna(axis=1, how='all')
+
+                    except wr.exceptions.NoFilesFound:
+                        print('v2 metrics failed, falling back to v1 metrics')
+                        current_game = wr.s3.read_csv(
+                            f"{game_path}-v1-0-0", index_col=[0], use_threads=True
+                        ).dropna(axis=1, how='all')
+                else:
+                    current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
 
             session_date_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 8)][0]
             current_game['session_date'] = pd.to_datetime(game_path.split('/')[session_date_idx])
