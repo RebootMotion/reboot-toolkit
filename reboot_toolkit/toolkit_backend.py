@@ -381,6 +381,8 @@ def load_games_to_df_from_s3_paths(
                 else:
                     print('Attempted to add IK joints, but they cannot be added to dataframes without time')
 
+            print(current_game.columns)
+            print('movement_num' in current_game.columns)
             if 'movement_num' in current_game.columns:
                 current_game = current_game.sort_values(
                     by=['session_date', 'session_num', 'movement_num'], ignore_index=True
