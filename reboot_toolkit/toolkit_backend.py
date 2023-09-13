@@ -381,6 +381,13 @@ def load_games_to_df_from_s3_paths(
                 else:
                     print('Attempted to add IK joints, but they cannot be added to dataframes without time')
 
+            if 'movement_num' in current_game.columns:
+                current_game = current_game.sort_values(
+                    by=['session_date', 'session_num', 'movement_num'], ignore_index=True
+                )
+
+                current_game['count'] = current_game.groupby(['session_date', 'session_num']).cumcount()
+
             all_games.append(current_game)
 
             print('Loaded path:', game_path, '-', i + 1, 'out of', len(game_paths))
