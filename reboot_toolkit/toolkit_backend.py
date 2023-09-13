@@ -381,16 +381,6 @@ def load_games_to_df_from_s3_paths(
                 else:
                     print('Attempted to add IK joints, but they cannot be added to dataframes without time')
 
-            print(current_game.columns)
-            print('movement_num' in current_game.columns)
-            if 'movement_num' in current_game.columns:
-                current_game = current_game.sort_values(
-                    by=['session_date', 'session_num', 'movement_num'], ignore_index=True
-                )
-
-                current_game['count'] = current_game.groupby(['session_date', 'session_num']).cumcount()
-                print('Added count to dataframe')
-
             all_games.append(current_game)
 
             print('Loaded path:', game_path, '-', i + 1, 'out of', len(game_paths))
@@ -488,7 +478,13 @@ def merge_data_df_with_s3_keys(data_df: pd.DataFrame, s3_keys: list[str]) -> pd.
 
     id_path_df['movement_num'] = id_path_df['movement_num'].astype(int)
 
-    return data_df.merge(id_path_df, left_on='org_movement_id', right_on='org_movement_id', how='left')
+    data_df = data_df.merge(
+        id_path_df, left_on='org_movement_id', right_on='org_movement_id', how='left'
+    ).sort_values(by=['session_date', 'session_num', 'movement_num'])
+
+    data_df['count'] = data_df.groupby(['session_date', 'session_num', 'movement_num']).cumcount()
+
+    return data_df
 
 
 def list_chunks(lst: list, n: int) -> Generator[list, None, None]:
