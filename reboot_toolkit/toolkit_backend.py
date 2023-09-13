@@ -387,6 +387,7 @@ def load_games_to_df_from_s3_paths(
                 )
 
                 current_game['count'] = current_game.groupby(['session_date', 'session_num']).cumcount()
+                print('Added count to dataframe')
 
             all_games.append(current_game)
 
