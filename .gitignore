@@ -141,3 +141,7 @@ dmypy.json
 /001_baseball_pitching_right_handed.trc
 /recommendation_metrics.csv
 /test.ipynb
+
+# IDE
+.idea 
+.vscode

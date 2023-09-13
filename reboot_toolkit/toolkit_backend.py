@@ -478,7 +478,13 @@ def merge_data_df_with_s3_keys(data_df: pd.DataFrame, s3_keys: list[str]) -> pd.
 
     id_path_df['movement_num'] = id_path_df['movement_num'].astype(int)
 
-    return data_df.merge(id_path_df, left_on='org_movement_id', right_on='org_movement_id', how='left')
+    data_df = data_df.merge(
+        id_path_df, left_on='org_movement_id', right_on='org_movement_id', how='left'
+    ).sort_values(by=['session_date', 'session_num', 'movement_num'], ignore_index=True)
+
+    data_df['count'] = data_df.groupby(['session_date', 'session_num']).cumcount() + 1
+
+    return data_df
 
 
 def list_chunks(lst: list, n: int) -> Generator[list, None, None]:
