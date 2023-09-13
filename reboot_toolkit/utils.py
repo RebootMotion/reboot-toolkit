@@ -1,8 +1,9 @@
 import json
 import logging
 import os
+
 from getpass import getpass
-from typing import Any
+from typing import Any, Optional, Union
 from uuid import UUID
 
 import boto3
@@ -15,31 +16,32 @@ from mlb_statsapi import GameRequest, Game
 logger = logging.getLogger(__name__)
 
 
-def setup_aws() -> boto3.Session:
+def setup_aws(
+        org_id: Optional[str] = None, 
+        aws_access_key_id: Optional[str] = None, 
+        aws_secret_access_key: Optional[str] = None, 
+        aws_default_region: Optional[str] = None
+    ) -> boto3.Session:
     load_dotenv()
 
     if 'ORG_ID' not in os.environ:
-        credentials_string = getpass('Input JSON string containing your credentials:')
-        credentials = json.loads(credentials_string)
+        input_org_id = getpass(f'Input org_id here (or input empty string to use {org_id}):')
+        if len(input_org_id.strip()) == 0:
+            os.environ['ORG_ID'] = org_id
+        else:
+            os.environ['ORG_ID'] = input_org_id
+    if 'AWS_ACCESS_KEY_ID' not in os.environ:
+        os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id or getpass('Input AWS_ACCESS_KEY_ID here:')
+    if 'AWS_SECRET_ACCESS_KEY' not in os.environ:
+        os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key or getpass('Input SECRET_ACCESS_KEY here:')
+    if 'AWS_DEFAULT_REGION' not in os.environ:
+        os.environ['AWS_DEFAULT_REGION'] = aws_default_region or getpass('Input AWS_DEFAULT_REGION here:')
 
-        try:
-            os.environ['ORG_ID'] = credentials['org_id']
-            os.environ['AWS_ACCESS_KEY_ID'] = credentials['aws_access_key_id']
-            os.environ['AWS_SECRET_ACCESS_KEY'] = credentials['aws_secret_access_key']
-            os.environ['AWS_SESSION_TOKEN'] = credentials['aws_session_token']
-        except KeyError as e:
-            raise KeyError(f'Credentials string missing key: {e}')
-
-    session_credentials = {
-        "aws_access_key_id": os.environ['AWS_ACCESS_KEY_ID'],
-        "aws_secret_access_key": os.environ['AWS_SECRET_ACCESS_KEY'],
-        "region_name": os.environ['AWS_DEFAULT_REGION'],
-    }
-
-    if 'AWS_SESSION_TOKEN' in os.environ:
-        session_credentials['aws_session_token'] = os.environ['AWS_SESSION_TOKEN']
-
-    boto3_session = boto3.Session(**session_credentials)
+    boto3_session = boto3.Session(
+        aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+        aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+        region_name=os.environ['AWS_DEFAULT_REGION']
+    )
 
     print('Org ID:')
     print(os.environ['ORG_ID'])
@@ -76,7 +78,7 @@ def serialize(obj):
         raise TypeError(
             f"Object of type {obj.__class__.__name__} is not JSON serializable"
         )
-
+    
 
 def lambda_has_error(response: dict) -> bool:
     return 'FunctionError' in response
@@ -128,3 +130,34 @@ def invoke_lambda_local(
         mock_res["FunctionError"] = "error!"
 
     return mock_res
+
+
+def handle_lambda_invocation(session: boto3.Session, payload: dict) -> Union[str, dict]:
+    """
+    Invoke a lambda function with the input payload.
+
+    :param session: the boto3 session info to use
+    :param payload: the lambda payload
+    :return: the serialized lambda response
+    """
+
+    payload = json.dumps(payload, default=serialize)
+
+    print('Sending to AWS...')
+    response = invoke_lambda(
+        session=session,
+        lambda_function_name=Functions.BACKEND,
+        invocation_type=InvocationTypes.SYNC,
+        lambda_payload=payload,
+    )
+
+    print('Reading Response...')
+    payload = response["Payload"].read()
+
+    if lambda_has_error(response):
+        print(f"Error in calculation:")
+        print(payload)
+        return payload
+
+    print("Returning AWS Response...")
+    return json.loads(payload)

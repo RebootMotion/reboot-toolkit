@@ -1,4 +1,5 @@
-import json
+from __future__ import annotations
+
 import os
 from collections.abc import Generator
 from datetime import date
@@ -12,16 +13,49 @@ import pandas as pd
 import plotly
 import plotly.graph_objects as go
 
+from rapidfuzz import fuzz
 from . import utils as ut
-from .datatypes import Functions, InvocationTypes, PlayerMetadata, S3Metadata
+from .datatypes import PlayerMetadata, S3Metadata
+
+
+def find_player_matches(
+        s3_df: pd.DataFrame, name_to_match: str, match_threshold: float = 50., max_results: int = 5
+) -> pd.DataFrame:
+    """
+    Use the rapid fuzz library to find all players matching an input name above a threshold.
+
+    :param s3_df: the s3 summary dataframe
+    :param name_to_match: the name to use to find a player match
+    :param match_threshold: the threshold above which to consider a successful match
+    :param max_results: the max number of results to return
+    :return: dataframe of matched results
+    """
+
+    name_to_match = name_to_match.lower()
+
+    players_df = s3_df[['first_name', 'last_name', 'org_player_id']].copy().drop_duplicates(subset=['org_player_id'])
+
+    players_df['name'] = players_df['first_name'].str.lower() + ' ' + players_df['last_name'].str.lower()
+
+    players_df['match'] = players_df['name'].transform(lambda x: fuzz.ratio(x, name_to_match))
+
+    matched_results_df = players_df.loc[players_df['match'] > match_threshold].sort_values(
+        by='match', ascending=False, ignore_index=True
+    )
+
+    if len(matched_results_df) > max_results:
+        matched_results_df = matched_results_df.iloc[:max_results]
+
+    return matched_results_df
 
 
 def filter_df_on_custom_metadata(
         data_df: pd.DataFrame,
         custom_metadata_df: pd.DataFrame,
         play_id_col: str,
-        metadata_col: str,
-        vals_to_keep: list[Union[int, float, str]]
+        metadata_col: str | None,
+        vals_to_keep: list[Union[int, float, str]] | None,
+        drop_extra_cols: bool = False
 ):
     """
     Filter segment dataframe using a dataframe of custom metadata with a play ID column for merging.
@@ -31,14 +65,21 @@ def filter_df_on_custom_metadata(
     :param play_id_col: the play ID column that can be merged with org_movement_id
     :param metadata_col: the metadata column to use for filtering
     :param vals_to_keep: list of values in the metadata column to keep after filtering
+    :param drop_extra_cols: whether to drop all columns other than the column used for filtering
     :return: the filtered input dataframe
     """
 
-    data_df = data_df.merge(
-        custom_metadata_df[[play_id_col, metadata_col]], left_on='org_movement_id', right_on=play_id_col, how='left'
-    )
+    if metadata_col is not None and len(metadata_col) > 0 and drop_extra_cols:
+        custom_metadata_df = custom_metadata_df[[play_id_col, metadata_col]].copy()
 
-    return data_df.loc[data_df[metadata_col].isin(vals_to_keep)].reset_index(drop=True)
+    data_df = data_df.merge(
+        custom_metadata_df, left_on='org_movement_id', right_on=play_id_col, how='left'
+    ).drop(columns=[col for col in custom_metadata_df.columns if col.lower().startswith('unnamed')])
+
+    if vals_to_keep:
+        return data_df.loc[data_df[metadata_col].isin(vals_to_keep)].copy().reset_index(drop=True)
+
+    return data_df
 
 
 def widget_interface(
@@ -126,7 +167,7 @@ def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
         [f"s3://reboot-motion-{s3_metadata.org_id}/population/s3_summary.csv"], index_col=[0]
     )
 
-    s3_summary_df['s3_path_delivery'] = s3_summary_df['s3_path_delivery'] + s3_metadata.file_type.value + '/'
+    s3_summary_df['s3_path_delivery'] = s3_summary_df['s3_path_delivery'] + s3_metadata.file_type.value
 
     s3_summary_df['org_player_id'] = s3_summary_df['org_player_id'].astype('string')
 
@@ -219,11 +260,15 @@ def list_available_s3_keys(org_id: str, df: pd.DataFrame) -> list[str]:
     return all_files
 
 
-def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
+def load_games_to_df_from_s3_paths(
+        game_paths: list[str], add_ik_joints: bool = False, add_elbow_var_val: bool = False
+) -> pd.DataFrame:
     """
     For a list of paths to the S3 folder of data for each game, load the data into a pandas dataframe.
 
     :param game_paths: list of paths to folders with data for a player
+    :param add_ik_joints: whether to add joints necessary to run analyses dependent on IK
+    :param add_elbow_var_val: whether to add elbow varus valgus columns set to 0 degrees
     :return: dataframe of all data from all games
     """
     game_paths = sorted(list(set(game_paths)))
@@ -277,15 +322,64 @@ def load_games_to_df_from_s3_paths(game_paths: list[str]) -> pd.DataFrame:
                     current_game['org_movement_id'] = org_movement_ids
 
             else:
-                current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
+                if '/metrics-' in game_path and not game_path[-1].isdigit():
+                    try:
+                        print('Defaulting to v2 metrics')
+                        current_game = wr.s3.read_csv(
+                            f"{game_path}-v2-0-0", index_col=[0], use_threads=True
+                        ).dropna(axis=1, how='all')
+
+                    except wr.exceptions.NoFilesFound:
+                        print('No v2 metrics found, falling back to v1 metrics')
+                        current_game = wr.s3.read_csv(
+                            f"{game_path}-v1-0-0", index_col=[0], use_threads=True
+                        ).dropna(axis=1, how='all')
+                else:
+                    current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
 
             session_date_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 8)][0]
             current_game['session_date'] = pd.to_datetime(game_path.split('/')[session_date_idx])
             print(current_game['session_date'].iloc[0])
 
-            session_num_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 6)][0]
-            current_game['session_num'] = game_path.split('/')[session_num_idx]
+            session_num_idx_list = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 6)]
+            if session_num_idx_list:
+                current_game['session_num'] = game_path.split('/')[session_num_idx_list[0]]
+
+            else:
+                current_game['session_num'] = None
             print(current_game['session_num'].iloc[0])
+
+            supported_mocap_types = ('hawkeye', 'hawkeyehfr')
+            mocap_type_list = [s for s in game_path.split('/') if any(mt in s for mt in supported_mocap_types)]
+            if mocap_type_list:
+                current_game['mocap_type'] = mocap_type_list[0]
+
+            else:
+                current_game['mocap_type'] = None
+            print(current_game['mocap_type'].iloc[0])
+
+            if add_ik_joints:
+                if 'time' in current_game.columns:
+                    for coord in ('X', 'Y', 'Z'):
+
+                        current_game[f'neck_{coord}'] = (current_game[f'LSJC_{coord}'] + current_game[f'RSJC_{coord}']) / 2.
+
+                        current_game[f'pelvis_{coord}'] = (current_game[f'LHJC_{coord}'] + current_game[f'RHJC_{coord}']) / 2.
+
+                        current_game[f'torso_{coord}'] = current_game[f'pelvis_{coord}']
+
+                        current_game[f'{coord.lower()}_translation'] = current_game[f'pelvis_{coord}']
+
+                    # set the target joint angle for the elbow varus valgus degree of freedom
+                    if add_elbow_var_val:
+                        current_game['right_elbow_var'] = 0
+
+                        current_game['left_elbow_var'] = 0
+
+                    print('Added IK joints')
+
+                else:
+                    print('Attempted to add IK joints, but they cannot be added to dataframes without time')
 
             all_games.append(current_game)
 
@@ -419,13 +513,17 @@ def get_available_joint_angles(analysis_dicts: list[dict]) -> list[str]:
         "session_num",
         "session_date"
     )
-    joint_angle_names = [
+
+    df_columns = list(analysis_dicts[0]["df"])
+
+    ind_end = df_columns.index("time")
+
+    return [
         jnt
-        for jnt in analysis_dicts[0]["df"].columns
+        for jnt in df_columns[:ind_end]
         if not jnt.startswith(non_angle_col_prefixes)
         and not jnt.endswith(("_X", "_Y", "_Z", "_vel", "_acc"))
     ]
-    return joint_angle_names
 
 
 def filter_pop_df(
@@ -543,36 +641,6 @@ def filter_analysis_dicts(
     return res
 
 
-def handle_lambda_invocation(session: boto3.Session, payload: dict) -> go.Figure:
-    """
-    Invoke a lambda function with the input payload.
-
-    :param session: the boto3 session info to use
-    :param payload: the lambda payload
-    :return: the serialized lambda response
-    """
-    payload = json.dumps(payload, default=ut.serialize)
-
-    print('Sending to AWS...')
-    response = ut.invoke_lambda(
-        session=session,
-        lambda_function_name=Functions.BACKEND,
-        invocation_type=InvocationTypes.SYNC,
-        lambda_payload=payload,
-    )
-
-    print('Reading Response...')
-    payload = response["Payload"].read()
-
-    if ut.lambda_has_error(response):
-        print(f"Error in calculation")
-        print(payload)
-        return payload
-
-    print("Returning Plotly figure...")
-    return plotly.io.from_json(json.loads(payload))
-
-
 def get_animation(
         session: boto3.Session,
         analysis_dicts: list[dict],
@@ -629,7 +697,7 @@ def get_animation(
 
     payload = {"function_name": "get_joint_angle_animation", "args": args}
 
-    return handle_lambda_invocation(session, payload)
+    return plotly.io.from_json(ut.handle_lambda_invocation(session, payload))
 
 
 def get_joint_plot(
@@ -688,7 +756,7 @@ def get_joint_plot(
 
     payload = {"function_name": "get_joint_angle_plots", "args": args}
 
-    return handle_lambda_invocation(session, payload)
+    return plotly.io.from_json(ut.handle_lambda_invocation(session, payload))
 
 
 def save_figs_to_html(
