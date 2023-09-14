@@ -67,6 +67,10 @@ def decorate_primary_segment_df_with_stats_api(primary_segment_data_df: pd.DataF
             all_game_metrics = game_df
         else:
             all_game_metrics = pd.concat([all_game_metrics, game_df])
+
+    if 'pitch_type' in primary_segment_data_df.columns:
+        all_game_metrics.rename(columns={'pitch_type': 'pitch_type_stats_api'},inplace=True)    # If there are already pitch types defined in the primary DataFrame, renames the pitch types from the stats API
+
     return primary_segment_data_df.merge(all_game_metrics, how='left', left_on='org_movement_id', right_index=True)
 
 
