@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import plotly
 import plotly.graph_objects as go
+import random
 
 from rapidfuzz import fuzz
 from . import utils as ut
@@ -155,11 +156,12 @@ def display_available_df_data(df: pd.DataFrame) -> None:
         print()
 
 
-def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
+def download_s3_summary_df(s3_metadata: S3Metadata, verbose: bool = True) -> pd.DataFrame:
     """
     Download the CSV that summarizes all the current data in S3 into a dataframe.
 
     :param s3_metadata: the S3Metadata object to use to download the S3 summary CSV
+    :param verbose: whether to display the available data
     :return: dataframe of all the data in S3
     """
 
@@ -175,7 +177,8 @@ def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
 
     s3_summary_df['session_date'] = pd.to_datetime(s3_summary_df['session_date'])
 
-    display_available_df_data(s3_summary_df)
+    if verbose:
+        display_available_df_data(s3_summary_df)
 
     return s3_summary_df
 
@@ -193,12 +196,13 @@ def add_to_mask(mask: pd.Series, df: pd.DataFrame, col: str, vals: list) -> pd.S
     return mask & df[col].isin(vals)
 
 
-def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -> pd.DataFrame:
+def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
     """
     Filter the S3 summary dataframe for only rows that are associated with the input player metadata.
 
     :param player_metadata: the metadata to use to filter the dataframe
     :param s3_df: the s3 summary dataframe
+    :param verbose: whether to display the available data
     :return: the filtered dataframe that only includes rows related to the player metadata
     """
 
@@ -225,7 +229,8 @@ def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -
 
     return_df = s3_df.loc[mask]
 
-    display_available_df_data(return_df)
+    if verbose:
+        display_available_df_data(return_df)
 
     return return_df
 
@@ -258,7 +263,6 @@ def list_available_s3_keys(org_id: str, df: pd.DataFrame) -> list[str]:
         all_files.extend(s3_files)
 
     return all_files
-
 
 def load_games_to_df_from_s3_paths(
         game_paths: list[str], add_ik_joints: bool = False, add_elbow_var_val: bool = False
@@ -399,6 +403,168 @@ def load_games_to_df_from_s3_paths(
 
     return all_games_df
 
+def load_sampled_games_to_df_from_s3_paths(
+        game_paths: list[str], add_ik_joints: bool = False, add_elbow_var_val: bool = False, game_proportion: float = 1.0, movement_proportion: float = 0.2, min_movements: int = 0
+) -> pd.DataFrame:
+    """
+    For a list of paths to the S3 folder of data for each game, load the data into a pandas dataframe.
+
+    :param game_paths: list of paths to folders with data for a player
+    :param add_ik_joints: whether to add joints necessary to run analyses dependent on IK
+    :param add_elbow_var_val: whether to add elbow varus valgus columns set to 0 degrees
+    :param game_proportion: proportion of the player's games to sample from
+    :param movement_proportion: proportion of the movements from each game to sample
+    :param min_movements: minimum movements to sample from each game
+    :return: dataframe of all data from all games
+    """
+    
+    game_paths = sorted(list(set(game_paths)))
+
+    if game_proportion < 1.0:
+        game_sample_size = int(game_proportion * len(game_paths))
+        game_paths = random.sample(game_paths, game_sample_size)
+
+    all_games = []
+
+    for i, game_path in enumerate(game_paths):
+
+        try:
+            if 'hitting-processed-series' in game_path:
+                swing_filenames = wr.s3.list_objects(game_path)
+
+                if movement_proportion < 1.0:
+                    movement_sample_size = max(int(movement_proportion * len(swing_filenames)), min(min_movements, len(swing_filenames)))
+                    swing_filenames = random.sample(swing_filenames, movement_sample_size)
+
+                swing_dfs = []
+                for swing_filename in swing_filenames:
+                    swing_df = wr.s3.read_csv(swing_filename, index_col=[0], use_threads=True).dropna(axis=1, how='all')
+
+                    basepath = os.path.join(*swing_filename.split('/')[1:-2])
+                    movement_id = os.path.basename(swing_filename)[:-8]
+                    org_movement_id = movement_id.split('_')[-1]
+
+                    if 'time' not in swing_df.columns:
+                        metrics_csv_filename = os.path.join('s3://',basepath,'hitting-processed-metrics',f'{movement_id}_bhm.csv')
+                        metrics_df = wr.s3.read_csv(metrics_csv_filename)
+                        
+                        swing_df['time'] = (np.arange(swing_df.shape[0]) / 300).round(5)
+                        
+                        if not np.isnan(metrics_df.loc[0,'impact_event']):
+                            end_index = int(metrics_df.loc[0,'impact_event'])
+                        else:
+                            end_index = int(metrics_df.loc[0,'peak_velocity_event'])
+                            
+                        swing_df['time_from_swing_end'] = (swing_df['time'].values - swing_df['time'].values[end_index]).round(5)
+                        swing_df['rel_frame'] = (np.arange(swing_df.shape[0]) - end_index).astype(int)
+                            
+                        foot_down = int(metrics_df.loc[0,'foot_down_event'])
+                        norm_time_step = 100 / (end_index - foot_down)
+                        
+                        swing_df['norm_time'] = ((np.arange(swing_df.shape[0]) - foot_down) * norm_time_step).round(5)
+                        
+                        swing_df['org_movement_id'] = org_movement_id
+                        
+                    swing_dfs.append(swing_df)
+                    
+                current_game = pd.concat(swing_dfs)
+
+            elif 'hitting-processed-metrics' in game_path:
+                swing_filenames = wr.s3.list_objects(game_path)
+
+                if movement_proportion < 1.0:
+                    movement_sample_size = max(int(movement_proportion * len(swing_filenames)), min(min_movements, len(swing_filenames)))
+                    swing_filenames = random.sample(swing_filenames, movement_sample_size)
+
+                current_game = wr.s3.read_csv(swing_filenames, use_threads=True).dropna(axis=1, how='all')
+
+                if 'org_movement_id' not in current_game.columns:
+                    org_movement_ids = [os.path.basename(swing_filename).split('_')[1] for swing_filename in swing_filenames]
+                    current_game['org_movement_id'] = org_movement_ids
+
+            else:
+                if '/metrics-' in game_path and not game_path[-1].isdigit():
+                    try:
+                        print('Defaulting to v2 metrics')
+                        current_game = wr.s3.read_csv(
+                            f"{game_path}-v2-0-0", index_col=[0], use_threads=True
+                        ).dropna(axis=1, how='all')
+
+                    except wr.exceptions.NoFilesFound:
+                        print('No v2 metrics found, falling back to v1 metrics')
+                        current_game = wr.s3.read_csv(
+                            f"{game_path}-v1-0-0", index_col=[0], use_threads=True
+                        ).dropna(axis=1, how='all')
+                else:
+                    movement_filenames = wr.s3.list_objects(game_path)
+
+                    if movement_proportion < 1.0:
+                        movement_sample_size = max(int(movement_proportion * len(movement_filenames)), min(min_movements, len(movement_filenames)))
+                        movement_filenames = random.sample(movement_filenames, movement_sample_size)
+
+                    current_game = wr.s3.read_csv(movement_filenames, index_col=[0], use_threads=True).dropna(axis=1, how='all')
+
+            session_date_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 8)][0]
+            current_game['session_date'] = pd.to_datetime(game_path.split('/')[session_date_idx])
+            print(current_game['session_date'].iloc[0])
+
+            session_num_idx_list = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 6)]
+            if session_num_idx_list:
+                current_game['session_num'] = game_path.split('/')[session_num_idx_list[0]]
+
+            else:
+                current_game['session_num'] = None
+            print(current_game['session_num'].iloc[0])
+
+            supported_mocap_types = ('hawkeye', 'hawkeyehfr')
+            mocap_type_list = [s for s in game_path.split('/') if any(mt in s for mt in supported_mocap_types)]
+            if mocap_type_list:
+                current_game['mocap_type'] = mocap_type_list[0]
+
+            else:
+                current_game['mocap_type'] = None
+            print(current_game['mocap_type'].iloc[0])
+
+            if add_ik_joints:
+                if 'time' in current_game.columns:
+                    for coord in ('X', 'Y', 'Z'):
+
+                        current_game[f'neck_{coord}'] = (current_game[f'LSJC_{coord}'] + current_game[f'RSJC_{coord}']) / 2.
+
+                        current_game[f'pelvis_{coord}'] = (current_game[f'LHJC_{coord}'] + current_game[f'RHJC_{coord}']) / 2.
+
+                        current_game[f'torso_{coord}'] = current_game[f'pelvis_{coord}']
+
+                        current_game[f'{coord.lower()}_translation'] = current_game[f'pelvis_{coord}']
+
+                    # set the target joint angle for the elbow varus valgus degree of freedom
+                    if add_elbow_var_val:
+                        current_game['right_elbow_var'] = 0
+
+                        current_game['left_elbow_var'] = 0
+
+                    print('Added IK joints')
+
+                else:
+                    print('Attempted to add IK joints, but they cannot be added to dataframes without time')
+
+            all_games.append(current_game)
+
+            print('Loaded path:', game_path, '-', i + 1, 'out of', len(game_paths))
+
+        except Exception as exc:
+            print('Error reading path', game_path, exc)
+            continue
+
+    all_games_df = pd.concat(all_games).reset_index(drop=True)
+
+    if ('rel_frame' not in all_games_df.columns) and ('time_from_max_hand' in all_games_df.columns):
+        print('Creating relative frame column...')
+        all_games_df['rel_frame'] = all_games_df['time_from_max_hand'].copy()
+        all_games_df['rel_frame'] = all_games_df.groupby('org_movement_id')['rel_frame'].transform(get_relative_frame)
+        print('Done!')
+
+    return all_games_df
 
 def load_data_into_analysis_dict(
         player_metadata: PlayerMetadata,
