@@ -277,22 +277,28 @@ def load_games_to_df_from_s3_paths(
     :return: dataframe of all data from all games
     """
 
-    game_number_threshold = 10
+    movement_sampling_game_threshold = 10
+    movement_sampling_proportion = 0.2
+    movement_sampling_min_movements = 15
+    game_cap = 60
 
     game_paths = sorted(list(set(game_paths)))
-
-    print(len(game_paths))
-
-    if len(game_paths) > game_number_threshold:
-        movement_proportion = 0.2
-        min_movements = 15
-    else:
-        movement_proportion = 1.0
-        min_movements = 0
 
     if game_proportion < 1.0:
         game_sample_size = int(game_proportion * len(game_paths))
         game_paths = random.sample(game_paths, game_sample_size)
+
+    if len(game_paths) > game_cap:
+        print(f'Number of games selected exceeds request limit. {game_cap} games randomly sampled from date range.')
+        print('  If sample data is not desired, reduce the selection range or contact Reboot for more information.')
+        game_paths = random.sample(game_paths, game_cap)
+
+    if len(game_paths) > movement_sampling_game_threshold:
+        movement_proportion = movement_sampling_proportion
+        min_movements = movement_sampling_min_movements
+    else:
+        movement_proportion = 1.0
+        min_movements = 0
 
     all_games = []
 
