@@ -281,6 +281,8 @@ def load_games_to_df_from_s3_paths(
 
     game_paths = sorted(list(set(game_paths)))
 
+    print(len(game_paths))
+
     if len(game_paths) > game_number_threshold:
         movement_proportion = 0.2
         min_movements = 15
