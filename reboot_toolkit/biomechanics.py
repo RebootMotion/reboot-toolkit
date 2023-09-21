@@ -3,7 +3,7 @@ import mujoco
 import numpy as np
 import pandas as pd
 
-from typing import Union
+from typing import Union, Optional
 from xml.etree import ElementTree as ET
 
 from . import utils as ut
@@ -53,18 +53,28 @@ def get_bone_lengths(pd_object: Union[pd.Series, pd.DataFrame]):
     }
 
 
-def scale_human_xml(ik_df: pd.DataFrame, desired_mass: float, boto3_session: boto3.Session) -> str:
+def scale_human_xml(
+        ik_df: pd.DataFrame,
+        desired_mass: float,
+        movement_type: str = 'baseball-pitching',
+        boto3_session: Optional[boto3.Session] = None
+) -> str:
     """
     Retrieve a scaled humanoid model from AWS, scaled in both length and mass
 
     :param ik_df: the inverse kinematics data frame to use for calculating scaling factors
     :param desired_mass: the desired mass to scale to
+    :param movement_type: the movement type intended for the mujoco simulation
     :param boto3_session: the boto3 session for accessing AWS
     :return: the scaled MuJoCo XML model string
     """
+    if boto3_session is None:
+        raise ValueError('Please input a boto3 session')
+
     args = {
         "bone_length_dict": get_bone_lengths(ik_df),
-        "desired_mass": desired_mass
+        "desired_mass": desired_mass,
+        "movement_type": movement_type
     }
 
     payload = {"function_name": "scale_human_xml", "args": args}

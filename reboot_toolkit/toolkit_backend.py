@@ -370,6 +370,15 @@ def load_games_to_df_from_s3_paths(
 
                         current_game[f'{coord.lower()}_translation'] = current_game[f'pelvis_{coord}']
 
+                    if 'Basketball_X' in current_game.columns:
+                        current_game = current_game.rename(
+                            columns={
+                                'Basketball_X': 'x_ball_translation',
+                                'Basketball_Y': 'y_ball_translation',
+                                'Basketball_Z': 'z_ball_translation'
+                            }
+                        )
+
                     # set the target joint angle for the elbow varus valgus degree of freedom
                     if add_elbow_var_val:
                         current_game['right_elbow_var'] = 0
@@ -391,10 +400,17 @@ def load_games_to_df_from_s3_paths(
 
     all_games_df = pd.concat(all_games).reset_index(drop=True)
 
-    if ('rel_frame' not in all_games_df.columns) and ('time_from_max_hand' in all_games_df.columns):
+    if (
+            ('rel_frame' not in all_games_df.columns)
+            and (('time_from_max_hand' in all_games_df.columns) or ('time_from_max_height' in all_games_df.columns))
+    ):
         print('Creating relative frame column...')
-        all_games_df['rel_frame'] = all_games_df['time_from_max_hand'].copy()
+
+        time_col = 'time_from_max_hand' if 'time_from_max_hand' in all_games_df.columns else 'time_from_max_height'
+
+        all_games_df['rel_frame'] = all_games_df[time_col].copy()
         all_games_df['rel_frame'] = all_games_df.groupby('org_movement_id')['rel_frame'].transform(get_relative_frame)
+
         print('Done!')
 
     return all_games_df
