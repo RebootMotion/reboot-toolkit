@@ -370,6 +370,15 @@ def load_games_to_df_from_s3_paths(
 
                         current_game[f'{coord.lower()}_translation'] = current_game[f'pelvis_{coord}']
 
+                    if 'Basketball_X' in current_game.columns:
+                        current_game = current_game.rename(
+                            columns={
+                                'Basketball_X': 'x_ball_translation',
+                                'Basketball_Y': 'y_ball_translation',
+                                'Basketball_Z': 'z_ball_translation'
+                            }
+                        )
+
                     # set the target joint angle for the elbow varus valgus degree of freedom
                     if add_elbow_var_val:
                         current_game['right_elbow_var'] = 0
