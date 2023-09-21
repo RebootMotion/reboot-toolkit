@@ -11,6 +11,7 @@ class MocapType(str, Enum):
 class MovementType(str, Enum):
     BASEBALL_PITCHING = "baseball-pitching"
     BASEBALL_HITTING = "baseball-hitting"
+    BASKETBALL_SHOOTING = "baseball-hitting"
 
 
 class Handedness(str, Enum):
