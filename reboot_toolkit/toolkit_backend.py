@@ -282,8 +282,6 @@ def load_games_to_df_from_s3_paths(
     movement_sampling_min_movements = 15
     game_cap = 60
 
-    game_paths = sorted(list(set(game_paths)))
-
     if game_proportion < 1.0:
         game_sample_size = int(game_proportion * len(game_paths))
         game_paths = random.sample(game_paths, game_sample_size)
@@ -299,6 +297,8 @@ def load_games_to_df_from_s3_paths(
     else:
         movement_proportion = 1.0
         min_movements = 0
+
+    game_paths = sorted(list(set(game_paths)))
 
     all_games = []
 
