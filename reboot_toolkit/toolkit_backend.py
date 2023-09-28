@@ -310,7 +310,7 @@ def load_games_to_df_from_s3_paths(
 
                 if movement_proportion < 1.0:
                     movement_sample_size = max(int(movement_proportion * len(swing_filenames)), min(min_movements, len(swing_filenames)))
-                    swing_filenames = random.sample(swing_filenames, movement_sample_size)
+                    swing_filenames = sorted(random.sample(swing_filenames, movement_sample_size))
 
                 swing_dfs = []
                 for swing_filename in swing_filenames:
@@ -350,7 +350,7 @@ def load_games_to_df_from_s3_paths(
 
                 if movement_proportion < 1.0:
                     movement_sample_size = max(int(movement_proportion * len(swing_filenames)), min(min_movements, len(swing_filenames)))
-                    swing_filenames = random.sample(swing_filenames, movement_sample_size)
+                    swing_filenames = sorted(random.sample(swing_filenames, movement_sample_size))
 
                 current_game = wr.s3.read_csv(swing_filenames, use_threads=True).dropna(axis=1, how='all')
 
@@ -376,7 +376,7 @@ def load_games_to_df_from_s3_paths(
 
                     if movement_proportion < 1.0:
                         movement_sample_size = max(int(movement_proportion * len(movement_filenames)), min(min_movements, len(movement_filenames)))
-                        movement_filenames = random.sample(movement_filenames, movement_sample_size)
+                        movement_filenames = sorted(random.sample(movement_filenames, movement_sample_size))
 
                     current_game = wr.s3.read_csv(movement_filenames, index_col=[0], use_threads=True).dropna(axis=1, how='all')
 
