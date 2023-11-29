@@ -24,13 +24,27 @@ logger = logging.getLogger(__name__)
 logger.setLevel(get_log_level())
 
 
+def add_ik_cols(trc_df):
+    for coord in ("X", "Y", "Z"):
+        trc_df[f"neck_{coord}"] = (
+            trc_df[f"LSJC_{coord}"] + trc_df[f"RSJC_{coord}"]
+        ) / 2.0
+
+        trc_df[f"pelvis_{coord}"] = (
+            trc_df[f"LHJC_{coord}"] + trc_df[f"RHJC_{coord}"]
+        ) / 2.0
+
+        trc_df[f"torso_{coord}"] = trc_df[f"pelvis_{coord}"]
+
+
 def read_trc(in_file_name: str) -> pd.DataFrame:
-    trc_df = pd.read_csv(in_file_name, sep='\t', header=4, dtype=np.float32)
+    trc_df = pd.read_csv(in_file_name, sep="\t", header=4, dtype=np.float32)
 
     n_lines = 4
 
-    if in_file_name.startswith('s3://'):
+    if in_file_name.startswith("s3://"):
         import s3fs
+
         FS = s3fs.S3FileSystem(anon=False)
         with FS.open(in_file_name, "r") as my_file:
             # data = my_file.readlines()
@@ -41,30 +55,26 @@ def read_trc(in_file_name: str) -> pd.DataFrame:
             data = [next(my_file) for _ in range(n_lines)]
 
     col_current = list(trc_df)
-    col_prefixes = data[3].split('\t')
-    col_prefixes = [col.rstrip() for col in col_prefixes if ((col != '') & (col != '\n'))]
+    col_prefixes = data[3].split("\t")
+    col_prefixes = [
+        col.rstrip() for col in col_prefixes if ((col != "") & (col != "\n"))
+    ]
 
-    col_headers = {col_current[0]: col_prefixes[0], col_current[1]: 'time'}
+    col_headers = {col_current[0]: col_prefixes[0], col_current[1]: "time"}
 
     col_num = 2
 
     for col in col_prefixes[2:]:
-
-        for coord in ['X', 'Y', 'Z']:
-            col_headers[col_current[col_num]] = col + '_' + coord
+        for coord in ["X", "Y", "Z"]:
+            col_headers[col_current[col_num]] = col + "_" + coord
 
             trc_df[col_current[col_num]] = trc_df[col_current[col_num]] / 1000
 
             col_num = col_num + 1
 
-    trc_df = trc_df.rename(columns=col_headers).interpolate(method='linear')
+    trc_df = trc_df.rename(columns=col_headers).interpolate(method="linear")
 
-    for coord in ['X', 'Y', 'Z']:
-        trc_df[f'neck_{coord}'] = (trc_df[f'LSJC_{coord}'] + trc_df[f'RSJC_{coord}']) / 2.0
-
-        trc_df[f'pelvis_{coord}'] = (trc_df[f'LHJC_{coord}'] + trc_df[f'RHJC_{coord}']) / 2.0
-
-        trc_df[f'torso_{coord}'] = trc_df[f'pelvis_{coord}']
+    add_ik_cols(trc_df)
 
     return trc_df
 
@@ -77,7 +87,12 @@ def inverse_kinematics(
     movement_id: Optional[str],
     movement_type: str,
 ) -> pd.DataFrame | dict:
-    print("Running inverse kinematics, this could take between 30 s and 2 mins to run...")
+    necessary_ik_cols = ("neck_", "pelvis_", "torso_")
+
+    if len([col for col in trc_df.columns if col.startswith(necessary_ik_cols)]) != 9:
+        add_ik_cols(trc_df)
+        print("Added necessary IK columns:", necessary_ik_cols)
+
     args = {
         "dom_hand": dom_hand,
         "trc_df": trc_df,
@@ -85,8 +100,14 @@ def inverse_kinematics(
         "movement_id": movement_id,
         "movement_type": movement_type,
     }
+
     payload = {"function_name": "inverse_kinematics", "args": args}
+
     payload = json.dumps(payload, default=ut.serialize)
+
+    print(
+        "Running inverse kinematics, this could take between 30 secs and 2 mins to run..."
+    )
     response = ut.invoke_lambda(
         session=session,
         lambda_function_name=Functions.INVERSE_KINEMATICS,
@@ -99,5 +120,5 @@ def inverse_kinematics(
         print(f"Error in calculation")
         print(payload)
         return payload
-        
+
     return pd.read_json(StringIO(json.loads(payload)))
