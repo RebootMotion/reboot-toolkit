@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Dict, Generator, List, Optional
-from uuid import uuid4
+
+from io import StringIO
+from typing import Any, Optional
 
 import boto3
 import numpy as np
 import pandas as pd
-from botocore.errorfactory import ClientError
 
 from . import utils as ut
 from .datatypes import Functions, InvocationTypes
@@ -77,7 +77,7 @@ def inverse_kinematics(
     movement_id: Optional[str],
     movement_type: str,
 ) -> pd.DataFrame | dict:
-    print("Running inverse kinematics, this can take over 30s to run...")
+    print("Running inverse kinematics, this could take between 30 s and 2 mins to run...")
     args = {
         "dom_hand": dom_hand,
         "trc_df": trc_df,
@@ -100,4 +100,4 @@ def inverse_kinematics(
         print(payload)
         return payload
         
-    return pd.read_json(json.loads(payload))
+    return pd.read_json(StringIO(json.loads(payload)))
