@@ -1,5 +1,4 @@
 awswrangler
-autoviz
 boto3
 IPython
 ipywidgets
@@ -12,6 +11,5 @@ plotly
 pygwalker
 python-dotenv
 rapidfuzz
-sweetviz
 tqdm
 
