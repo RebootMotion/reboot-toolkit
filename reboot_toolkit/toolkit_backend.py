@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import plotly
 import plotly.graph_objects as go
+import random
 
 from rapidfuzz import fuzz
 from . import utils as ut
@@ -155,11 +156,12 @@ def display_available_df_data(df: pd.DataFrame) -> None:
         print()
 
 
-def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
+def download_s3_summary_df(s3_metadata: S3Metadata, verbose: bool = True) -> pd.DataFrame:
     """
     Download the CSV that summarizes all the current data in S3 into a dataframe.
 
     :param s3_metadata: the S3Metadata object to use to download the S3 summary CSV
+    :param verbose: whether to display the available data
     :return: dataframe of all the data in S3
     """
 
@@ -175,7 +177,8 @@ def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
 
     s3_summary_df['session_date'] = pd.to_datetime(s3_summary_df['session_date'])
 
-    display_available_df_data(s3_summary_df)
+    if verbose:
+        display_available_df_data(s3_summary_df)
 
     return s3_summary_df
 
@@ -193,12 +196,13 @@ def add_to_mask(mask: pd.Series, df: pd.DataFrame, col: str, vals: list) -> pd.S
     return mask & df[col].isin(vals)
 
 
-def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -> pd.DataFrame:
+def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
     """
     Filter the S3 summary dataframe for only rows that are associated with the input player metadata.
 
     :param player_metadata: the metadata to use to filter the dataframe
     :param s3_df: the s3 summary dataframe
+    :param verbose: whether to display the available data
     :return: the filtered dataframe that only includes rows related to the player metadata
     """
 
@@ -225,7 +229,8 @@ def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -
 
     return_df = s3_df.loc[mask]
 
-    display_available_df_data(return_df)
+    if verbose:
+        display_available_df_data(return_df)
 
     return return_df
 
@@ -259,9 +264,8 @@ def list_available_s3_keys(org_id: str, df: pd.DataFrame) -> list[str]:
 
     return all_files
 
-
 def load_games_to_df_from_s3_paths(
-        game_paths: list[str], add_ik_joints: bool = False, add_elbow_var_val: bool = False
+        game_paths: list[str], add_ik_joints: bool = False, add_elbow_var_val: bool = False, game_proportion: float = 1.0
 ) -> pd.DataFrame:
     """
     For a list of paths to the S3 folder of data for each game, load the data into a pandas dataframe.
@@ -269,8 +273,31 @@ def load_games_to_df_from_s3_paths(
     :param game_paths: list of paths to folders with data for a player
     :param add_ik_joints: whether to add joints necessary to run analyses dependent on IK
     :param add_elbow_var_val: whether to add elbow varus valgus columns set to 0 degrees
+    :param game_proportion: proportion of the player's games to sample from
     :return: dataframe of all data from all games
     """
+
+    movement_sampling_game_threshold = 10
+    movement_sampling_proportion = 0.2
+    movement_sampling_min_movements = 15
+    game_cap = 60
+
+    if game_proportion < 1.0:
+        game_sample_size = int(game_proportion * len(game_paths))
+        game_paths = random.sample(game_paths, game_sample_size)
+
+    if len(game_paths) > game_cap:
+        print(f'Number of games selected exceeds request limit. {game_cap} games randomly sampled from date range.')
+        print('  If sample data is not desired, reduce the selection range or contact Reboot for more information.')
+        game_paths = random.sample(game_paths, game_cap)
+
+    if len(game_paths) > movement_sampling_game_threshold:
+        movement_proportion = movement_sampling_proportion
+        min_movements = movement_sampling_min_movements
+    else:
+        movement_proportion = 1.0
+        min_movements = 0
+
     game_paths = sorted(list(set(game_paths)))
 
     all_games = []
@@ -280,6 +307,11 @@ def load_games_to_df_from_s3_paths(
         try:
             if 'hitting-processed-series' in game_path:
                 swing_filenames = wr.s3.list_objects(game_path)
+
+                if movement_proportion < 1.0:
+                    movement_sample_size = max(int(movement_proportion * len(swing_filenames)), min(min_movements, len(swing_filenames)))
+                    swing_filenames = sorted(random.sample(swing_filenames, movement_sample_size))
+
                 swing_dfs = []
                 for swing_filename in swing_filenames:
                     swing_df = wr.s3.read_csv(swing_filename, index_col=[0], use_threads=True).dropna(axis=1, how='all')
@@ -315,6 +347,11 @@ def load_games_to_df_from_s3_paths(
 
             elif 'hitting-processed-metrics' in game_path:
                 swing_filenames = wr.s3.list_objects(game_path)
+
+                if movement_proportion < 1.0:
+                    movement_sample_size = max(int(movement_proportion * len(swing_filenames)), min(min_movements, len(swing_filenames)))
+                    swing_filenames = sorted(random.sample(swing_filenames, movement_sample_size))
+
                 current_game = wr.s3.read_csv(swing_filenames, use_threads=True).dropna(axis=1, how='all')
 
                 if 'org_movement_id' not in current_game.columns:
@@ -335,7 +372,13 @@ def load_games_to_df_from_s3_paths(
                             f"{game_path}-v1-0-0", index_col=[0], use_threads=True
                         ).dropna(axis=1, how='all')
                 else:
-                    current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
+                    movement_filenames = wr.s3.list_objects(game_path)
+
+                    if movement_proportion < 1.0:
+                        movement_sample_size = max(int(movement_proportion * len(movement_filenames)), min(min_movements, len(movement_filenames)))
+                        movement_filenames = sorted(random.sample(movement_filenames, movement_sample_size))
+
+                    current_game = wr.s3.read_csv(movement_filenames, index_col=[0], use_threads=True).dropna(axis=1, how='all')
 
             session_date_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 8)][0]
             current_game['session_date'] = pd.to_datetime(game_path.split('/')[session_date_idx])
@@ -414,7 +457,6 @@ def load_games_to_df_from_s3_paths(
         print('Done!')
 
     return all_games_df
-
 
 def load_data_into_analysis_dict(
         player_metadata: PlayerMetadata,
