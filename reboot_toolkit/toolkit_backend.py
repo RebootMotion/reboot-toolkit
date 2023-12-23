@@ -109,7 +109,9 @@ def create_interactive_widget(s3_df: pd.DataFrame) -> widgets.VBox:
             options=sorted(list(s3_df['org_player_id'].unique())), description='Orgs Players', disabled=False
         ),
         session_nums=widgets.SelectMultiple(
-            options=sorted(list(s3_df['session_num'].unique())), description='Session Nums', disabled=False
+            options=sorted(list(s3_df['session_num'].unique()) + list(s3_df['org_session_id'].unique())),
+            description='Session Nums',
+            disabled=False
         ),
         session_dates=widgets.SelectMultiple(
             options=sorted(list(s3_df['session_date'].astype(str).unique())), description='Dates', disabled=False
