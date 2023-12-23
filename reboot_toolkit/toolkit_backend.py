@@ -848,6 +848,7 @@ def save_figs_to_html(
 
 
 # def main():
+#     """Demo main script for testing"""
 #     from utils import setup_aws
 #     from datatypes import S3Metadata, MocapType, MovementType, Handedness, FileType, PlayerMetadata
 #
