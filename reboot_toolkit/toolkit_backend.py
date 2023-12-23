@@ -103,13 +103,16 @@ def widget_interface(
 
 def create_interactive_widget(s3_df: pd.DataFrame) -> widgets.VBox:
     """Create an interactive widget for selecting data from an S3 summary dataframe."""
-    w1 =  widgets.interactive(
+    w1 = widgets.interactive(
         widget_interface,
         org_player_ids=widgets.SelectMultiple(
             options=sorted(list(s3_df['org_player_id'].unique())), description='Orgs Players', disabled=False
         ),
         session_nums=widgets.SelectMultiple(
-            options=sorted(list(s3_df['session_num'].unique()) + list(s3_df['org_session_id'].unique())),
+            options=sorted(
+                list(s3_df['session_num'].unique())
+                + list(s3_df['org_session_id'].dropna().unique())
+            ),
             description='Session Nums',
             disabled=False
         ),
@@ -176,6 +179,8 @@ def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
     s3_summary_df['session_num'] = s3_summary_df['session_num'].astype('string')
 
     s3_summary_df['session_date'] = pd.to_datetime(s3_summary_df['session_date'])
+
+    s3_summary_df['org_session_id'] = s3_summary_df['org_session_id'].astype('string')
 
     display_available_df_data(s3_summary_df)
 
