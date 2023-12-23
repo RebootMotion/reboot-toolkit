@@ -109,7 +109,9 @@ def create_interactive_widget(s3_df: pd.DataFrame) -> widgets.VBox:
             options=sorted(list(s3_df['org_player_id'].unique())), description='Orgs Players', disabled=False
         ),
         session_nums=widgets.SelectMultiple(
-            options=sorted(list(s3_df['session_num'].unique())), description='Session Nums', disabled=False
+            options=sorted(list(s3_df['session_num'].unique()) + list(s3_df['org_session_id'].unique())),
+            description='Session Nums',
+            disabled=False
         ),
         session_dates=widgets.SelectMultiple(
             options=sorted(list(s3_df['session_date'].astype(str).unique())), description='Dates', disabled=False
@@ -212,7 +214,10 @@ def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -
         mask = add_to_mask(mask, s3_df, 'session_date', player_metadata.session_dates)
 
     if player_metadata.session_nums:
-        mask = add_to_mask(mask, s3_df, 'session_num', player_metadata.session_nums)
+        mask = mask & (
+                s3_df['session_num'].isin(player_metadata.session_nums)
+                | s3_df['org_session_id'].isin(player_metadata.session_nums)
+        )
 
     if player_metadata.session_date_start is not None:
         mask = mask & (s3_df['session_date'] >= pd.Timestamp(player_metadata.session_date_start))
@@ -223,7 +228,7 @@ def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -
     if player_metadata.year is not None:
         mask = mask & (s3_df['year'] == player_metadata.year)
 
-    return_df = s3_df.loc[mask]
+    return_df = s3_df.loc[mask].drop_duplicates(ignore_index=True)
 
     display_available_df_data(return_df)
 
@@ -842,3 +847,30 @@ def save_figs_to_html(
         f"Now you can download the new {output_report_name} "
         f"file from the files tab in the left side bar (refresh the list and click the three dots)"
     )
+
+
+# def main():
+#     """Demo main script for testing"""
+#     from utils import setup_aws
+#     from datatypes import S3Metadata, MocapType, MovementType, Handedness, FileType, PlayerMetadata
+#
+#     setup_aws()
+#     mocap_types = [MocapType.HAWKEYE_HFR, MocapType.HAWKEYE]
+#     movement_type = MovementType.BASEBALL_HITTING
+#     handedness = Handedness.LEFT
+#     file_type = FileType.INVERSE_KINEMATICS
+#
+#     s3_metadata = S3Metadata(
+#         org_id=os.environ['ORG_ID'],
+#         mocap_types=mocap_types,
+#         movement_type=movement_type,
+#         handedness=handedness,
+#         file_type=file_type,
+#     )
+#
+#     s3_df = download_s3_summary_df(s3_metadata)
+#     print(s3_df)
+#
+#
+# if __name__ == "__main__":
+#     main()
