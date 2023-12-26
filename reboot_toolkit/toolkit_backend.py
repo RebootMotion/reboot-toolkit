@@ -347,26 +347,34 @@ def load_games_to_df_from_s3_paths(
                 else:
                     current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
 
-            session_date_idx = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 8)][0]
-            current_game['session_date'] = pd.to_datetime(game_path.split('/')[session_date_idx])
-            print(current_game['session_date'].iloc[0])
+            supported_mocap_types = ['hawkeye', 'hawkeyehfr']
 
-            session_num_idx_list = [i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 6)]
-            if session_num_idx_list:
+            session_date_idx_list = [
+                i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 8)
+            ]
+            session_date_str = game_path.split('/')[session_date_idx_list[0]]
+            current_game['session_date'] = pd.to_datetime(session_date_str)
+            print('session_date:', current_game['session_date'].iloc[0])
+
+            used_words = set(supported_mocap_types + [session_date_str])
+            session_num_idx_list = [
+                i for i, s in enumerate(game_path.split('/'))
+                if s.isalnum() and s not in used_words and ((len(s) == 1) or (len(s) == 6) or (len(s) == 8))
+            ]
+            if 0 < len(session_num_idx_list) <= 2:
                 current_game['session_num'] = game_path.split('/')[session_num_idx_list[0]]
 
             else:
                 current_game['session_num'] = None
-            print(current_game['session_num'].iloc[0])
+            print('session_num:', current_game['session_num'].iloc[0])
 
-            supported_mocap_types = ('hawkeye', 'hawkeyehfr')
             mocap_type_list = [s for s in game_path.split('/') if any(mt in s for mt in supported_mocap_types)]
             if mocap_type_list:
                 current_game['mocap_type'] = mocap_type_list[0]
 
             else:
                 current_game['mocap_type'] = None
-            print(current_game['mocap_type'].iloc[0])
+            print('mocap_type:', current_game['mocap_type'].iloc[0])
 
             if add_ik_joints:
                 if 'time' in current_game.columns:
@@ -874,7 +882,21 @@ def save_figs_to_html(
 #     )
 #
 #     s3_df = download_s3_summary_df(s3_metadata)
-#     print(s3_df)
+#
+#     primary_analysis_segment = PlayerMetadata(
+#         org_player_ids=None,
+#         session_dates=None,
+#         session_nums=None,
+#         session_date_start=None,
+#         session_date_end=None,
+#         year=2023,
+#         org_movement_id=None,
+#         s3_metadata=s3_metadata,
+#     )
+#
+#     primary_segment_summary_df = filter_s3_summary_df(primary_analysis_segment, s3_df)
+#
+#     load_games_to_df_from_s3_paths(primary_segment_summary_df['s3_path_delivery'].tolist())
 #
 #
 # if __name__ == "__main__":
