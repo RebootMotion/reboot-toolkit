@@ -359,7 +359,7 @@ def load_games_to_df_from_s3_paths(
             used_words = set(supported_mocap_types + [session_date_str])
             session_num_idx_list = [
                 i for i, s in enumerate(game_path.split('/'))
-                if s.isalnum() and s not in used_words and ((len(s) == 6) or (len(s) == 8))
+                if s.isalnum() and s not in used_words and ((len(s) == 1) or (len(s) == 6) or (len(s) == 8))
             ]
             if 0 < len(session_num_idx_list) <= 2:
                 current_game['session_num'] = game_path.split('/')[session_num_idx_list[0]]
