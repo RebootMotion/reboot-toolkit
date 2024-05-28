@@ -7,6 +7,7 @@ mjc_viewer
 mujoco
 numpy
 pandas
+pandasai
 plotly
 pygwalker
 python-dotenv
