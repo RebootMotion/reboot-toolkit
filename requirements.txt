@@ -11,4 +11,5 @@ plotly
 pygwalker
 python-dotenv<2.0.0
 rapidfuzz==3.9.4
+requests==2.32.3
 tqdm
