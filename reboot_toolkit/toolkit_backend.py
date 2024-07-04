@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+
 from collections.abc import Generator
 from datetime import date
 from typing import Optional, Union
@@ -14,7 +15,8 @@ import plotly
 import plotly.graph_objects as go
 
 from rapidfuzz import fuzz
-from . import utils as ut
+
+from .utils import handle_lambda_invocation
 from .datatypes import PlayerMetadata, S3Metadata
 
 
@@ -754,7 +756,7 @@ def get_animation(
 
     payload = {"function_name": "get_joint_angle_animation", "args": args}
 
-    return plotly.io.from_json(ut.handle_lambda_invocation(session, payload))
+    return plotly.io.from_json(handle_lambda_invocation(session, payload))
 
 
 def get_joint_plot(
@@ -813,7 +815,7 @@ def get_joint_plot(
 
     payload = {"function_name": "get_joint_angle_plots", "args": args}
 
-    return plotly.io.from_json(ut.handle_lambda_invocation(session, payload))
+    return plotly.io.from_json(handle_lambda_invocation(session, payload))
 
 
 def save_figs_to_html(

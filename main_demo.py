@@ -8,6 +8,7 @@ from reboot_toolkit import (
     MocapType,
     MovementType,
     PlayerMetadata,
+    RebootApi,
     S3Metadata,
 )
 
@@ -20,12 +21,20 @@ def main():
     org_player_ids = [os.environ["ORG_PLAYER_ID"]]
     n_recent_games_to_load = 2
 
-    mocap_types = [rtk.MocapType.HAWKEYE_HFR, rtk.MocapType.HAWKEYE]
+    mocap_types = [MocapType.HAWKEYE_HFR, MocapType.HAWKEYE]
     movement_type = MovementType.BASEBALL_HITTING
     handedness = Handedness.LEFT
     file_type = FileType.INVERSE_KINEMATICS
 
     rtk.setup_aws(verbose=verbose)
+
+    reboot_api = RebootApi()
+
+    print("Getting sessions...")
+    resp = reboot_api.get_sessions()
+
+    print("Done!")
+    print(resp)
 
     s3_metadata = S3Metadata(
         org_id=os.environ["ORG_ID"],
