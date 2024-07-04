@@ -27,7 +27,7 @@ def get_request(
 
 
 class RebootApi(object):
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: str | None = None):
         self.api_key = api_key or os.environ["REBOOT_API_KEY"]
 
         self.headers = {"x-api-key": self.api_key}
