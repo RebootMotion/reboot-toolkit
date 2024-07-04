@@ -1,4 +1,4 @@
-awswrangler
+awswrangler==3.8.0
 boto3
 IPython
 ipywidgets

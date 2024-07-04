@@ -160,11 +160,12 @@ def display_available_df_data(df: pd.DataFrame) -> None:
         print()
 
 
-def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
+def download_s3_summary_df(s3_metadata: S3Metadata, verbose: bool = True) -> pd.DataFrame:
     """
     Download the CSV that summarizes all the current data in S3 into a dataframe.
 
     :param s3_metadata: the S3Metadata object to use to download the S3 summary CSV
+    :param verbose: whether to print available info from the dataframe
     :return: dataframe of all the data in S3
     """
 
@@ -182,7 +183,8 @@ def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
 
     s3_summary_df['org_session_id'] = s3_summary_df['org_session_id'].astype('string')
 
-    display_available_df_data(s3_summary_df)
+    if verbose:
+        display_available_df_data(s3_summary_df)
 
     return s3_summary_df
 
@@ -200,12 +202,13 @@ def add_to_mask(mask: pd.Series, df: pd.DataFrame, col: str, vals: list) -> pd.S
     return mask & df[col].isin(vals)
 
 
-def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -> pd.DataFrame:
+def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
     """
     Filter the S3 summary dataframe for only rows that are associated with the input player metadata.
 
     :param player_metadata: the metadata to use to filter the dataframe
     :param s3_df: the s3 summary dataframe
+    :param verbose: whether to display available info from the dataframe
     :return: the filtered dataframe that only includes rows related to the player metadata
     """
 
@@ -235,7 +238,8 @@ def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -
 
     return_df = s3_df.loc[mask].drop_duplicates(ignore_index=True)
 
-    display_available_df_data(return_df)
+    if verbose:
+        display_available_df_data(return_df)
 
     return return_df
 
@@ -271,7 +275,7 @@ def list_available_s3_keys(org_id: str, df: pd.DataFrame) -> list[str]:
 
 
 def load_games_to_df_from_s3_paths(
-        game_paths: list[str], add_ik_joints: bool = False, add_elbow_var_val: bool = False
+        game_paths: list[str], add_ik_joints: bool = False, add_elbow_var_val: bool = False, verbose: bool = True
 ) -> pd.DataFrame:
     """
     For a list of paths to the S3 folder of data for each game, load the data into a pandas dataframe.
@@ -279,13 +283,15 @@ def load_games_to_df_from_s3_paths(
     :param game_paths: list of paths to folders with data for a player
     :param add_ik_joints: whether to add joints necessary to run analyses dependent on IK
     :param add_elbow_var_val: whether to add elbow varus valgus columns set to 0 degrees
+    :param verbose: whether to display status info as games are loading
     :return: dataframe of all data from all games
     """
     game_paths = sorted(list(set(game_paths)))
 
     all_games = []
+    game_count = 0
 
-    for i, game_path in enumerate(game_paths):
+    for game_path in game_paths:
 
         try:
             if 'hitting-processed-series' in game_path:
@@ -334,16 +340,20 @@ def load_games_to_df_from_s3_paths(
             else:
                 if '/metrics-' in game_path and not game_path[-1].isdigit():
                     try:
-                        print('Defaulting to v2 metrics')
+                        metrics_status = 'Defaulting to v2 metrics'
                         current_game = wr.s3.read_csv(
                             f"{game_path}-v2-0-0", index_col=[0], use_threads=True
                         ).dropna(axis=1, how='all')
 
                     except wr.exceptions.NoFilesFound:
-                        print('No v2 metrics found, falling back to v1 metrics')
+                        metrics_status = 'No v2 metrics found, falling back to v1 metrics'
                         current_game = wr.s3.read_csv(
                             f"{game_path}-v1-0-0", index_col=[0], use_threads=True
                         ).dropna(axis=1, how='all')
+
+                    if verbose:
+                        print(metrics_status)
+
                 else:
                     current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
 
@@ -354,7 +364,6 @@ def load_games_to_df_from_s3_paths(
             ]
             session_date_str = game_path.split('/')[session_date_idx_list[0]]
             current_game['session_date'] = pd.to_datetime(session_date_str)
-            print('session_date:', current_game['session_date'].iloc[0])
 
             used_words = set(supported_mocap_types + [session_date_str])
             session_num_idx_list = [
@@ -366,7 +375,6 @@ def load_games_to_df_from_s3_paths(
 
             else:
                 current_game['session_num'] = None
-            print('session_num:', current_game['session_num'].iloc[0])
 
             mocap_type_list = [s for s in game_path.split('/') if any(mt in s for mt in supported_mocap_types)]
             if mocap_type_list:
@@ -374,7 +382,6 @@ def load_games_to_df_from_s3_paths(
 
             else:
                 current_game['mocap_type'] = None
-            print('mocap_type:', current_game['mocap_type'].iloc[0])
 
             if add_ik_joints:
                 if 'time' in current_game.columns:
@@ -403,33 +410,43 @@ def load_games_to_df_from_s3_paths(
 
                         current_game['left_elbow_var'] = 0
 
-                    print('Added IK joints')
+                    ik_status = 'Added IK joints'
 
                 else:
-                    print('Attempted to add IK joints, but they cannot be added to dataframes without time')
+                    ik_status = 'Attempted to add IK joints, but they cannot be added to dataframes without time'
+
+                if verbose:
+                    print(ik_status)
 
             all_games.append(current_game)
+            game_count += 1
 
-            print('Loaded path:', game_path, '-', i + 1, 'out of', len(game_paths))
+            if verbose:
+                print('session_date:', current_game['session_date'].iloc[0])
+                print('session_num:', current_game['session_num'].iloc[0])
+                print('Loaded path:', game_path, '-', game_count, 'out of', len(game_paths))
+                print()
 
         except Exception as exc:
-            print('Error reading path', game_path, exc)
+            print('Error reading path:', game_path)
+            print('With exception:', exc)
             continue
 
     all_games_df = pd.concat(all_games).reset_index(drop=True)
 
+    time_cols = ('time_from_max_hand', 'time_from_max_height')
+
     if (
             ('rel_frame' not in all_games_df.columns)
-            and (('time_from_max_hand' in all_games_df.columns) or ('time_from_max_height' in all_games_df.columns))
+            and any(tc in  all_games_df.columns for tc in time_cols)
     ):
-        print('Creating relative frame column...')
-
-        time_col = 'time_from_max_hand' if 'time_from_max_hand' in all_games_df.columns else 'time_from_max_height'
+        time_col = next(tc for tc in time_cols if tc in all_games_df.columns)
 
         all_games_df['rel_frame'] = all_games_df[time_col].copy()
         all_games_df['rel_frame'] = all_games_df.groupby('org_movement_id')['rel_frame'].transform(get_relative_frame)
 
-        print('Done!')
+        if verbose:
+            print('Created relative frame column')
 
     return all_games_df
 
