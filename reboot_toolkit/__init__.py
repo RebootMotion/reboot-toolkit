@@ -1,5 +1,5 @@
-from .datatypes import (FileType, Handedness, MocapType, MovementType, MOVEMENT_TYPE_IDS,
-                        PlayerMetadata, S3Metadata)
+from .datatypes import (FileType, Handedness, MocapType, MovementType, MOVEMENT_TYPE_IDS_MAP,
+                        PlayerMetadata, S3Metadata, DataType)
 from .inverse_kinematics import inverse_kinematics, read_trc
 from .recommendations import recommendation, recommendation_violin_plot
 from .toolkit_backend import (find_player_matches, create_interactive_widget,

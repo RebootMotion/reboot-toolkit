@@ -1,7 +1,5 @@
 import os
 
-import pandas as pd
-
 import reboot_toolkit as rtk
 
 from reboot_toolkit import (
@@ -10,8 +8,9 @@ from reboot_toolkit import (
     MocapType,
     MovementType,
     PlayerMetadata,
-    RebootApi,
     S3Metadata,
+    RebootApi,
+    DataType,
 )
 
 
@@ -19,26 +18,26 @@ def main():
     """Demo main script showcasing functionality"""
 
     verbose = False
-    save_local = True
+    save_local = False
 
     year = int(os.environ["YEAR"])
     org_player_id = os.environ["ORG_PLAYER_ID"]
     n_recent_games_to_load = 2
 
     org_player_ids = [org_player_id]
-    mocap_types = [MocapType.HAWKEYE_HFR, MocapType.HAWKEYE]
+    mocap_type_enums = [MocapType.HAWKEYE_HFR, MocapType.HAWKEYE]
     movement_type_enum = MovementType.BASEBALL_HITTING
-    handedness = Handedness.LEFT
-    file_type = FileType.INVERSE_KINEMATICS
+    handedness_enum = Handedness.LEFT
+    file_type_enum = FileType.INVERSE_KINEMATICS
 
     rtk.setup_aws(verbose=verbose)
 
     s3_metadata = S3Metadata(
         org_id=os.environ["ORG_ID"],
-        mocap_types=mocap_types,
+        mocap_types=mocap_type_enums,
         movement_type=movement_type_enum,
-        handedness=handedness,
-        file_type=file_type,
+        handedness=handedness_enum,
+        file_type=file_type_enum,
     )
 
     primary_analysis_segment = PlayerMetadata(
@@ -67,26 +66,20 @@ def main():
         metadata_df = rtk.export_data(
             reboot_api,
             org_player_id,
-            movement_type_enum.value,
-            "metadata",
+            movement_type_enum,
+            DataType.METADATA,
             session_ids,
             verbose=verbose,
         )
-    # metadata_df.to_parquet("metadata.parquet")
-    # metadata_df = pd.read_parquet("metadata.parquet")
-    print(metadata_df)
 
     print("Downloading data...")
     games_df = rtk.load_games_to_df_from_s3_paths(s3_paths_games, verbose=verbose)
-    games_df.to_parquet("games.parquet")
-    games_df = pd.read_parquet("games.parquet")
-    print(games_df)
 
-    print(games_df["RWJC_Z"])
+    print("Right wrist without offsets added:", games_df["RWJC_Z"].iloc[0])
 
     games_df = rtk.add_offsets_from_metadata(games_df, metadata_df)
 
-    print(games_df["RWJC_Z"])
+    print("Right wrist WITH offsets added:", games_df["RWJC_Z"].iloc[0])
 
 
 if __name__ == "__main__":

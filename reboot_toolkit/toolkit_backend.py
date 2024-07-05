@@ -19,7 +19,13 @@ import plotly.graph_objects as go
 from rapidfuzz import fuzz
 from tqdm import tqdm
 
-from .datatypes import PlayerMetadata, S3Metadata, MOVEMENT_TYPE_IDS
+from .datatypes import (
+    PlayerMetadata,
+    S3Metadata,
+    MOVEMENT_TYPE_IDS_MAP,
+    MovementType,
+    DataType,
+)
 from .reboot_api import RebootApi
 from .utils import handle_lambda_invocation
 
@@ -1024,6 +1030,43 @@ def save_figs_to_html(
     )
 
 
+def export_data(
+    reboot_api: RebootApi,
+    org_player_id: str,
+    movement_type_enum: MovementType,
+    data_type_enum: DataType,
+    session_ids: list[str],
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """
+    Export data using the Reboot API.
+
+    :param reboot_api: RebootApi object, must be opened first
+    :param org_player_id: the org player ID to download data for
+    :param movement_type_enum: the movement type enum to download data for
+    :param data_type_enum: the data type enum to download
+    :param session_ids: list of session IDs to download
+    :param verbose: whether to print progress
+    :return: dataframe of returned data
+    """
+    with ThreadPoolExecutor() as executor:
+        dfs = list(
+            tqdm(
+                executor.map(
+                    reboot_api.post_data_export,
+                    session_ids,
+                    repeat(MOVEMENT_TYPE_IDS_MAP[movement_type_enum.value]),
+                    repeat(org_player_id),
+                    repeat(data_type_enum.value),
+                ),
+                total=len(session_ids),
+                disable=not verbose,
+            )
+        )
+
+    return pd.concat(dfs, ignore_index=True)
+
+
 def add_offsets_from_metadata(
     data_df: pd.DataFrame, metadata_df: pd.DataFrame
 ) -> pd.DataFrame:
@@ -1064,29 +1107,3 @@ def add_offsets_from_metadata(
     data_df.drop(columns=cols_to_drop, inplace=True)
 
     return data_df
-
-
-def export_data(
-    reboot_api: RebootApi,
-    org_player_id: str,
-    movement_type: str,
-    data_type: str,
-    session_ids: list[str],
-    verbose: bool = True,
-) -> pd.DataFrame:
-    with ThreadPoolExecutor() as executor:
-        dfs = list(
-            tqdm(
-                executor.map(
-                    reboot_api.post_data_export,
-                    session_ids,
-                    repeat(MOVEMENT_TYPE_IDS[movement_type]),
-                    repeat(org_player_id),
-                    repeat(data_type),
-                ),
-                total=len(session_ids),
-                disable=not verbose,
-            )
-        )
-
-    return pd.concat(dfs, ignore_index=True)
