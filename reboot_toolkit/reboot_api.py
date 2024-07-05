@@ -167,12 +167,18 @@ class RebootApi(object):
     ) -> dict | list | pd.DataFrame:
         """
         Create a data export request and optionally download the resulting data if 'return_data' is True.
+        'data_format' must be 'parquet' or 'csv'.
         See https://api.rebootmotion.com/docs for full documentation.
 
         :return: either the request or response, or the dataframe of resulting data
         """
         local_vars = locals()
         return_data = local_vars.pop("return_data")
+
+        accepted_data_formats = {"parquet", "csv"}
+
+        if data_format not in accepted_data_formats:
+            raise ValueError("data_format must be parquet or csv")
 
         response = self._request(
             method="post",

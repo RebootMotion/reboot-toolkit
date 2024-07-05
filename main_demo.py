@@ -77,7 +77,7 @@ def main():
 
     print("Right wrist without offsets added:", games_df["RWJC_Z"].iloc[0])
 
-    games_df = rtk.add_offsets_from_metadata(games_df, metadata_df)
+    games_df = rtk.add_offsets_from_metadata(games_df, metadata_df, movement_type_enum)
 
     print("Right wrist WITH offsets added:", games_df["RWJC_Z"].iloc[0])
 

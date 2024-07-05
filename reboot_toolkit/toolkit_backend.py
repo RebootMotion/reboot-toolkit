@@ -1068,27 +1068,37 @@ def export_data(
 
 
 def add_offsets_from_metadata(
-    data_df: pd.DataFrame, metadata_df: pd.DataFrame
+    data_df: pd.DataFrame, metadata_df: pd.DataFrame, movement_type_enum
 ) -> pd.DataFrame:
     """
     Add the X, Y, and Z offsets from the metadata to the position columns of an existing dataframe.
 
     :param data_df: the data for adding the offsets
     :param metadata_df: the dataframe containing the offsets
+    :param movement_type_enum: the movement type enum
     :return: the dataframe with the added offsets
     """
+    accepted_movement_types = {"baseball-hitting"}
+
+    if movement_type_enum.value not in accepted_movement_types:
+        raise NotImplementedError(
+            "Adding offsets only implemented for movement types: {}, others coming soon!".format(
+                accepted_movement_types
+            )
+        )
+
+    assert set(data_df["org_movement_id"]) == set(
+        metadata_df["org_movement_id"]
+    ), "Mismatched org movement ids in data_df and metadata_df, but must be matched to add offsets"
+
+    base_cols = list(data_df)
+
     offset_cols = [
         "org_movement_id",
         "X_offset",
         "Y_offset",
         "Z_offset",
     ]
-
-    assert set(data_df["org_movement_id"]) == set(
-        metadata_df["org_movement_id"]
-    ), "Mismatched org movement ids in data_df and metadata_df"
-
-    base_cols = list(data_df)
 
     data_df = data_df.merge(metadata_df[offset_cols], on="org_movement_id", how="left")
 
