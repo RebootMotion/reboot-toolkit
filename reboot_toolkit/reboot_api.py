@@ -58,12 +58,12 @@ class RebootApi(object):
     def close(self) -> None:
         self.requests_session.close()
 
-    def get_mocap_types(self, return_lookup: bool = True) -> dict:
+    def get_mocap_types(self, return_id_lookup: bool = True) -> dict:
         mocap_type_response = self._request(
             method="get",
             route="mocap_types",
         )
-        if return_lookup:
+        if return_id_lookup:
             return {mocap["slug"]: mocap["id"] for mocap in mocap_type_response}
 
         return mocap_type_response
