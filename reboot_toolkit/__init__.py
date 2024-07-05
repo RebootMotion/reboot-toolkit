@@ -1,4 +1,4 @@
-from .datatypes import (FileType, Handedness, MocapType, MovementType,
+from .datatypes import (FileType, Handedness, MocapType, MovementType, MOVEMENT_TYPE_IDS,
                         PlayerMetadata, S3Metadata)
 from .inverse_kinematics import inverse_kinematics, read_trc
 from .recommendations import recommendation, recommendation_violin_plot

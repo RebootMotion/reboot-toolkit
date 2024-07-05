@@ -1,5 +1,5 @@
 awswrangler==3.8.0
-boto3==1.34.139
+boto3
 IPython
 ipywidgets
 matplotlib

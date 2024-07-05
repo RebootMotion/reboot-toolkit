@@ -1,66 +1,15 @@
 import json
 import os
+
+from gzip import decompress
+from io import BytesIO, StringIO
+
+import pandas as pd
 import requests
 
 
-def handle_request(response) -> dict | list:
-    try:
-        response.raise_for_status()
-
-    except requests.RequestException:
-        try:
-            print(response.json())
-
-        except json.decoder.JSONDecodeError:
-            print(response)
-
-        raise
-
-    return response.json()
-
-
-def get_request(
-    request_uri: str, headers: dict, params: dict | None = None, timeout: int = 60
-) -> dict | list:
-    """
-    Make a get request for an API.
-
-    :param request_uri: the uri for the request
-    :param headers: the headers for the request
-    :param params: dict of params for the request
-    :param timeout: seconds to wait for the request
-    :return: json response dict
-    """
-    response = requests.get(
-        request_uri,
-        params=params if isinstance(params, dict) else {},
-        headers=headers,
-        timeout=timeout,
-    )
-
-    return handle_request(response)
-
-
-def post_request(
-    request_uri: str, headers: dict, params: dict | None = None, timeout: int = 60
-) -> dict | list:
-    """
-    Make a post request for an API.
-
-    :param request_uri: the uri for the request
-    :param headers: the headers for the request
-    :param params: dict of params for the request
-    :param timeout: seconds to wait for the request
-    :return: json response dict
-    """
-    response = requests.post(
-        request_uri,
-        json=params if isinstance(params, dict) else {},
-        headers=headers,
-        timeout=timeout,
-    )
-
-    return handle_request(response)
+def locals_to_data(local_vars: dict) -> dict:
+    return {k: v for k, v in local_vars.items() if k != "self" and v is not None}
 
 
 class RebootApi(object):
@@ -70,12 +19,51 @@ class RebootApi(object):
         self.headers = {"x-api-key": self.api_key}
         self.default_query_limit = default_query_limit
 
+        self.requests_session = requests.Session()
+        self.requests_session.headers.update(self.headers)
+        self.requests_session.params = {"limit": default_query_limit}
+
+    def _request(
+        self,
+        method: str,
+        route: str,
+        params: dict | list | None = None,
+        data: dict | None = None,
+        timeout: int | None = None,
+        input_json: dict | list | None = None,
+    ):
+        response = self.requests_session.request(
+            method=method,
+            url=f"{self.base_url}/{route}",
+            params=params,
+            data=data,
+            timeout=timeout,
+            json=input_json,
+        )
+
+        try:
+            response.raise_for_status()
+
+        except requests.RequestException:
+            try:
+                print(response.json())
+
+            except json.decoder.JSONDecodeError:
+                print(response)
+
+            raise
+
+        return response.json()
+
+    def close(self) -> None:
+        self.requests_session.close()
+
     def get_mocap_types(self) -> dict:
         return {
             mocap["slug"]: mocap["id"]
-            for mocap in get_request(
-                request_uri=f"{self.base_url}/mocap_types",
-                headers=self.headers,
+            for mocap in self._request(
+                method="get",
+                route="mocap_types",
             )
         }
 
@@ -97,14 +85,11 @@ class RebootApi(object):
         offset: int | None = None,
         limit: int | None = None,
     ) -> dict:
-        if limit is None:
-            limit = self.default_query_limit
+        params = locals_to_data(locals())
 
-        params = {k: v for k, v in locals().items() if k != "self" and v is not None}
-
-        return get_request(
-            request_uri=f"{self.base_url}/sessions",
-            headers=self.headers,
+        return self._request(
+            method="get",
+            route="sessions",
             params=params,
         )
 
@@ -117,11 +102,40 @@ class RebootApi(object):
         data_format: str = "parquet",
         aggregate: bool = False,
         return_column_info: bool = False,
+        return_data: bool = True,
     ):
-        json_dict = {k: v for k, v in locals().items() if k != "self" and v is not None}
+        local_vars = locals()
+        return_data = local_vars.pop("return_data")
+        input_json = locals_to_data(local_vars)
+        print(input_json)
 
-        return post_request(
-            request_uri=f"{self.base_url}/data_export",
-            headers=self.headers,
-            params=json_dict,
+        response = self._request(
+            method="post",
+            route="data_export",
+            input_json=input_json,
         )
+        print(response)
+
+        if not return_data:
+            return response
+
+        if data_format == "parquet":
+            data_list = [
+                pd.read_parquet(BytesIO(requests.get(download_url).content))
+                for download_url in response["download_urls"]
+            ]
+
+        elif data_format == "csv":
+            data_list = [
+                pd.read_csv(
+                    StringIO(
+                        decompress(requests.get(download_url).content).decode("utf-8")
+                    )
+                )
+                for download_url in response["download_urls"]
+            ]
+
+        else:
+            raise ValueError("data_format must be parquet or csv")
+
+        return pd.concat(data_list, ignore_index=True)

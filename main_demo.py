@@ -10,6 +10,7 @@ from reboot_toolkit import (
     PlayerMetadata,
     RebootApi,
     S3Metadata,
+    MOVEMENT_TYPE_IDS,
 )
 
 
@@ -48,30 +49,28 @@ def main():
     )
 
     print("Downloading summary dataframe...")
-    s3_df = rtk.download_s3_summary_df(s3_metadata, verbose=verbose, save_local=save_local)
-    print(list(s3_df))
-    print(s3_df)
+    s3_df = rtk.download_s3_summary_df(
+        s3_metadata, verbose=verbose, save_local=save_local
+    )
 
     print("Creating primary segment_df...")
-    primary_segment_summary_df = rtk.filter_s3_summary_df(
-        primary_analysis_segment, s3_df, verbose=verbose
-    ).sort_values("session_date", ascending=True).iloc[-n_recent_games_to_load:]
-    print(primary_segment_summary_df)
+    primary_segment_summary_df = (
+        rtk.filter_s3_summary_df(primary_analysis_segment, s3_df, verbose=verbose)
+        .sort_values("session_date", ascending=True)
+        .iloc[-n_recent_games_to_load:]
+    )
 
-    print("Downloading sessions...")
+    print("Downloading metadata for most recent game...")
 
-    # session_dates = [
-    #     primary_segment_summary_df["session_date"].iloc[0].strftime("%Y-%m-%d"),
-    #     primary_segment_summary_df["session_date"].iloc[-1].strftime("%Y-%m-%d")
-    # ]
-    # print(session_dates)
-    # resp = reboot_api.get_sessions(session_date=session_dates)
+    row = primary_segment_summary_df.iloc[-1]
 
-    org_player_ids = list(primary_segment_summary_df["org_player_id"].unique())
-    resp = reboot_api.get_sessions(org_player_ids=org_player_ids)
-
-    for session in resp:
-        print(session)
+    df = reboot_api.post_data_export(
+        row["session_id"],
+        MOVEMENT_TYPE_IDS[row["movement_type"]],
+        row["org_player_id"],
+        data_type="metadata",
+    )
+    print(df)
 
     # s3_paths_games = primary_segment_summary_df["s3_path_delivery"].tolist()
     # print(s3_paths_games)

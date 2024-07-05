@@ -14,6 +14,13 @@ class MovementType(str, Enum):
     BASKETBALL_SHOOTING = "basketball-shooting"
 
 
+MOVEMENT_TYPE_IDS = {
+    MovementType.BASEBALL_HITTING.value: 1,
+    MovementType.BASEBALL_PITCHING.value: 2,
+    MovementType.BASKETBALL_SHOOTING.value: 67,
+}
+
+
 class Handedness(str, Enum):
     RIGHT = "right"
     LEFT = "left"
