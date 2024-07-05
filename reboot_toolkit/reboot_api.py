@@ -13,15 +13,45 @@ def locals_to_input(local_vars: dict) -> dict:
 
 
 class RebootApi(object):
-    def __init__(self, api_key: str | None = None, default_query_limit: int = 100):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        default_query_limit: int = 100,
+        open_on_init: bool = False,
+    ):
+        """
+        Initialize the reboot motion api with an api key and default headers.
+        Must open the reboot api with RebootApi.open() to make requests, or use RebootApi as a context manager
+
+        :param api_key: the api key to use, will default to REBOOT_API_KEY environment variable if not set
+        :param default_query_limit: the query limit to use as a default for all query string parameters
+        :param open_on_init: whether to open the reboot api with RebootApi.open() upon first creation
+        """
         self.base_url = "https://api.rebootmotion.com/"
         self.api_key = api_key or os.environ["REBOOT_API_KEY"]
         self.headers = {"x-api-key": self.api_key}
         self.default_query_limit = default_query_limit
 
+        if open_on_init:
+            self.open()
+
+        else:
+            self.requests_session = None
+
+    def __enter__(self) -> "RebootApi":
+        self.open()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_traceback):
+        self.close()
+
+    def open(self) -> None:
         self.requests_session = requests.Session()
         self.requests_session.headers.update(self.headers)
-        self.requests_session.params = {"limit": default_query_limit}
+        self.requests_session.params = {"limit": self.default_query_limit}
+
+    def close(self) -> None:
+        self.requests_session.close()
 
     def _request(
         self,
@@ -32,6 +62,11 @@ class RebootApi(object):
         timeout: int | None = None,
         input_json: dict | list | None = None,
     ):
+        if self.requests_session is None:
+            raise RuntimeError(
+                "Must call RebootApi.open() before making requests, or use RebootApi as a context manager"
+            )
+
         response = self.requests_session.request(
             method=method,
             url=f"{self.base_url}/{route}",
@@ -54,9 +89,6 @@ class RebootApi(object):
             raise
 
         return response.json()
-
-    def close(self) -> None:
-        self.requests_session.close()
 
     def get_mocap_types(self, return_id_lookup: bool = True) -> dict:
         mocap_type_response = self._request(

@@ -1,5 +1,7 @@
 import os
 
+import pandas as pd
+
 import reboot_toolkit as rtk
 
 from reboot_toolkit import (
@@ -10,7 +12,6 @@ from reboot_toolkit import (
     PlayerMetadata,
     RebootApi,
     S3Metadata,
-    MOVEMENT_TYPE_IDS,
 )
 
 
@@ -19,25 +20,23 @@ def main():
 
     verbose = False
     save_local = True
-    default_query_limit = 10000
 
     year = int(os.environ["YEAR"])
-    org_player_ids = [os.environ["ORG_PLAYER_ID"]]
-    n_recent_games_to_load = 1
+    org_player_id = os.environ["ORG_PLAYER_ID"]
+    n_recent_games_to_load = 2
 
+    org_player_ids = [org_player_id]
     mocap_types = [MocapType.HAWKEYE_HFR, MocapType.HAWKEYE]
-    movement_type = MovementType.BASEBALL_HITTING
+    movement_type_enum = MovementType.BASEBALL_HITTING
     handedness = Handedness.LEFT
     file_type = FileType.INVERSE_KINEMATICS
 
     rtk.setup_aws(verbose=verbose)
 
-    reboot_api = RebootApi(default_query_limit=default_query_limit)
-
     s3_metadata = S3Metadata(
         org_id=os.environ["ORG_ID"],
         mocap_types=mocap_types,
-        movement_type=movement_type,
+        movement_type=movement_type_enum,
         handedness=handedness,
         file_type=file_type,
     )
@@ -60,24 +59,28 @@ def main():
         .iloc[-n_recent_games_to_load:]
     )
 
-    print("Selecting most recent game...")
-    row = primary_segment_summary_df.iloc[-1]
-    s3_paths_games = [row["s3_path_delivery"]]
+    session_ids = list(primary_segment_summary_df["session_id"].unique())
+    s3_paths_games = list(primary_segment_summary_df["s3_path_delivery"].unique())
 
-    print("Downloading metadata for most recent game...")
-    metadata_df = reboot_api.post_data_export(
-        row["session_id"],
-        MOVEMENT_TYPE_IDS[row["movement_type"]],
-        row["org_player_id"],
-        data_type="metadata",
-    )
+    print("Downloading metadata...")
+    with RebootApi() as reboot_api:
+        metadata_df = rtk.export_data(
+            reboot_api,
+            org_player_id,
+            movement_type_enum.value,
+            "metadata",
+            session_ids,
+            verbose=verbose,
+        )
     # metadata_df.to_parquet("metadata.parquet")
     # metadata_df = pd.read_parquet("metadata.parquet")
+    print(metadata_df)
 
-    print("Downloading data for desired games...")
+    print("Downloading data...")
     games_df = rtk.load_games_to_df_from_s3_paths(s3_paths_games, verbose=verbose)
-    # games_df.to_parquet("games.parquet")
-    # games_df = pd.read_parquet("games.parquet")
+    games_df.to_parquet("games.parquet")
+    games_df = pd.read_parquet("games.parquet")
+    print(games_df)
 
     print(games_df["RWJC_Z"])
 
