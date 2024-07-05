@@ -58,14 +58,15 @@ class RebootApi(object):
     def close(self) -> None:
         self.requests_session.close()
 
-    def get_mocap_types(self) -> dict:
-        return {
-            mocap["slug"]: mocap["id"]
-            for mocap in self._request(
-                method="get",
-                route="mocap_types",
-            )
-        }
+    def get_mocap_types(self, return_lookup: bool = True) -> dict:
+        mocap_type_response = self._request(
+            method="get",
+            route="mocap_types",
+        )
+        if return_lookup:
+            return {mocap["slug"]: mocap["id"] for mocap in mocap_type_response}
+
+        return mocap_type_response
 
     def get_sessions(
         self,
@@ -85,12 +86,10 @@ class RebootApi(object):
         offset: int | None = None,
         limit: int | None = None,
     ) -> dict:
-        params = locals_to_input(locals())
-
         return self._request(
             method="get",
             route="sessions",
-            params=params,
+            params=locals_to_input(locals()),
         )
 
     def post_data_export(
@@ -106,15 +105,12 @@ class RebootApi(object):
     ):
         local_vars = locals()
         return_data = local_vars.pop("return_data")
-        input_json = locals_to_input(local_vars)
-        print(input_json)
 
         response = self._request(
             method="post",
             route="data_export",
-            input_json=input_json,
+            input_json=locals_to_input(local_vars),
         )
-        print(response)
 
         if not return_data:
             return response
