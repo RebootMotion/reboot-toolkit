@@ -61,6 +61,9 @@ def main():
     session_ids = list(primary_segment_summary_df["session_id"].unique())
     s3_paths_games = list(primary_segment_summary_df["s3_path_delivery"].unique())
 
+    print("Downloading data...")
+    games_df = rtk.load_games_to_df_from_s3_paths(s3_paths_games, verbose=verbose)
+
     print("Downloading metadata...")
     with RebootApi() as reboot_api:
         metadata_df = rtk.export_data(
@@ -71,9 +74,6 @@ def main():
             session_ids,
             verbose=verbose,
         )
-
-    print("Downloading data...")
-    games_df = rtk.load_games_to_df_from_s3_paths(s3_paths_games, verbose=verbose)
 
     print("Right wrist without offsets added:", games_df["RWJC_Z"].iloc[0])
 
