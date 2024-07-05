@@ -8,7 +8,7 @@ import pandas as pd
 import requests
 
 
-def locals_to_data(local_vars: dict) -> dict:
+def locals_to_input(local_vars: dict) -> dict:
     return {k: v for k, v in local_vars.items() if k != "self" and v is not None}
 
 
@@ -85,7 +85,7 @@ class RebootApi(object):
         offset: int | None = None,
         limit: int | None = None,
     ) -> dict:
-        params = locals_to_data(locals())
+        params = locals_to_input(locals())
 
         return self._request(
             method="get",
@@ -106,7 +106,7 @@ class RebootApi(object):
     ):
         local_vars = locals()
         return_data = local_vars.pop("return_data")
-        input_json = locals_to_data(local_vars)
+        input_json = locals_to_input(local_vars)
         print(input_json)
 
         response = self._request(
