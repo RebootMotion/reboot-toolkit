@@ -172,12 +172,15 @@ def download_s3_summary_df(s3_metadata: S3Metadata, verbose: bool = True, save_l
     :return: dataframe of all the data in S3
     """
     s3_summary_df = None
+    status_local = "Not saving summary dataframe locally"
 
     if save_local:
         try:
             s3_summary_df = pd.read_csv("s3_summary.csv")
+            status_local = "Loaded local summary dataframe"
 
         except FileNotFoundError:
+            status_local = "Local summary dataframe not found"
             pass
 
     if s3_summary_df is None:
@@ -185,7 +188,8 @@ def download_s3_summary_df(s3_metadata: S3Metadata, verbose: bool = True, save_l
             [f"s3://reboot-motion-{s3_metadata.org_id}/population/s3_summary.csv"], index_col=[0]
     )
 
-    s3_summary_df['s3_path_delivery'] = s3_summary_df['s3_path_delivery'] + s3_metadata.file_type.value
+    if not s3_summary_df['s3_path_delivery'].iloc[0].endswith(s3_metadata.file_type.value):
+        s3_summary_df['s3_path_delivery'] = s3_summary_df['s3_path_delivery'] + s3_metadata.file_type.value
 
     s3_summary_df['org_player_id'] = s3_summary_df['org_player_id'].astype('string')
 
@@ -196,6 +200,8 @@ def download_s3_summary_df(s3_metadata: S3Metadata, verbose: bool = True, save_l
     s3_summary_df['org_session_id'] = s3_summary_df['org_session_id'].astype('string')
 
     if verbose:
+        if save_local:
+            print(status_local)
         display_available_df_data(s3_summary_df)
 
     if save_local:
@@ -894,42 +900,36 @@ def save_figs_to_html(
     )
 
 
-# def main():
-#     """Demo main script for testing"""
-#     from utils import setup_aws
-#     from datatypes import S3Metadata, MocapType, MovementType, Handedness, FileType, PlayerMetadata
-#
-#     setup_aws()
-#     mocap_types = [MocapType.HAWKEYE_HFR, MocapType.HAWKEYE]
-#     movement_type = MovementType.BASEBALL_HITTING
-#     handedness = Handedness.LEFT
-#     file_type = FileType.INVERSE_KINEMATICS
-#
-#     s3_metadata = S3Metadata(
-#         org_id=os.environ['ORG_ID'],
-#         mocap_types=mocap_types,
-#         movement_type=movement_type,
-#         handedness=handedness,
-#         file_type=file_type,
-#     )
-#
-#     s3_df = download_s3_summary_df(s3_metadata)
-#
-#     primary_analysis_segment = PlayerMetadata(
-#         org_player_ids=None,
-#         session_dates=None,
-#         session_nums=None,
-#         session_date_start=None,
-#         session_date_end=None,
-#         year=2023,
-#         org_movement_id=None,
-#         s3_metadata=s3_metadata,
-#     )
-#
-#     primary_segment_summary_df = filter_s3_summary_df(primary_analysis_segment, s3_df)
-#
-#     load_games_to_df_from_s3_paths(primary_segment_summary_df['s3_path_delivery'].tolist())
-#
-#
-# if __name__ == "__main__":
-#     main()
+def add_offsets_from_metadata(data_df: pd.DataFrame, metadata_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add the X, Y, and Z offsets from the metadata to the position columns of an existing dataframe.
+
+    :param data_df: the data for adding the offsets
+    :param metadata_df: the dataframe containing the offsets
+    :return: the dataframe with the added offsets
+    """
+    offset_cols = [
+        "org_movement_id",
+        "X_offset",
+        "Y_offset",
+        "Z_offset",
+    ]
+
+    base_cols = list(data_df)
+
+    data_df = data_df.merge(metadata_df[offset_cols], on="org_movement_id", how="left")
+
+    cols_to_drop = []
+
+    for coord in ("X", "Y", "Z"):
+        coord_cols = [c for c in base_cols if c.endswith(f"_{coord}")]
+
+        data_df[coord_cols] = data_df[coord_cols].to_numpy() + np.tile(
+            np.expand_dims(data_df[f"{coord}_offset"].to_numpy(), 1),
+            (1, len(coord_cols)),
+        )
+        cols_to_drop.append(f"{coord}_offset")
+
+    data_df.drop(columns=cols_to_drop, inplace=True)
+
+    return data_df

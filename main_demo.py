@@ -1,5 +1,8 @@
 import os
 
+import numpy as np
+import pandas as pd
+
 import reboot_toolkit as rtk
 
 from reboot_toolkit import (
@@ -23,7 +26,7 @@ def main():
 
     year = int(os.environ["YEAR"])
     org_player_ids = [os.environ["ORG_PLAYER_ID"]]
-    n_recent_games_to_load = 2
+    n_recent_games_to_load = 1
 
     mocap_types = [MocapType.HAWKEYE_HFR, MocapType.HAWKEYE]
     movement_type = MovementType.BASEBALL_HITTING
@@ -60,26 +63,30 @@ def main():
         .iloc[-n_recent_games_to_load:]
     )
 
-    print("Downloading metadata for most recent game...")
-
+    print("Selecting most recent game...")
     row = primary_segment_summary_df.iloc[-1]
+    s3_paths_games = [row["s3_path_delivery"]]
 
-    df = reboot_api.post_data_export(
+    print("Downloading metadata for most recent game...")
+    metadata_df = reboot_api.post_data_export(
         row["session_id"],
         MOVEMENT_TYPE_IDS[row["movement_type"]],
         row["org_player_id"],
         data_type="metadata",
     )
-    print(df)
+    # metadata_df.to_parquet("metadata.parquet")
+    # metadata_df = pd.read_parquet("metadata.parquet")
 
-    # s3_paths_games = primary_segment_summary_df["s3_path_delivery"].tolist()
-    # print(s3_paths_games)
+    print("Downloading data for desired games...")
+    games_df = rtk.load_games_to_df_from_s3_paths(s3_paths_games, verbose=verbose)
+    # games_df.to_parquet("games.parquet")
+    # games_df = pd.read_parquet("games.parquet")
 
-    # print("Downloading data for desired games...")
-    # games_df = rtk.load_games_to_df_from_s3_paths(s3_paths_games, verbose=verbose)
-    #
-    # print("Done!")
-    # print(games_df)
+    print(games_df["RWJC_Z"])
+
+    games_df = rtk.add_offsets_from_metadata(games_df, metadata_df)
+
+    print(games_df["RWJC_Z"])
 
 
 if __name__ == "__main__":
