@@ -18,7 +18,7 @@ class RebootApi(object):
         self,
         api_key: str | None = None,
         default_query_limit: int = 100,
-        open_on_init: bool = False,
+        is_open: bool = False,
     ):
         """
         Initialize the reboot motion api with an api key and default headers.
@@ -26,14 +26,14 @@ class RebootApi(object):
 
         :param api_key: the api key to use, will default to REBOOT_API_KEY environment variable if not set
         :param default_query_limit: the query limit to use as a default for all query string parameters
-        :param open_on_init: whether to open the reboot api with RebootApi.open() upon first creation
+        :param is_open: whether to open the reboot api with RebootApi.open() upon first creation
         """
         self.base_url = "https://api.rebootmotion.com/"
         self.api_key = api_key or os.environ["REBOOT_API_KEY"]
         self.headers = {"x-api-key": self.api_key}
         self.default_query_limit = default_query_limit
 
-        if open_on_init:
+        if is_open:
             self.open()
 
         else:
