@@ -162,17 +162,27 @@ def display_available_df_data(df: pd.DataFrame) -> None:
         print()
 
 
-def download_s3_summary_df(s3_metadata: S3Metadata, verbose: bool = True) -> pd.DataFrame:
+def download_s3_summary_df(s3_metadata: S3Metadata, verbose: bool = True, save_local: bool = False) -> pd.DataFrame:
     """
     Download the CSV that summarizes all the current data in S3 into a dataframe.
 
     :param s3_metadata: the S3Metadata object to use to download the S3 summary CSV
     :param verbose: whether to print available info from the dataframe
+    :param save_local: whether to save the CSV as a local file
     :return: dataframe of all the data in S3
     """
+    s3_summary_df = None
 
-    s3_summary_df = wr.s3.read_csv(
-        [f"s3://reboot-motion-{s3_metadata.org_id}/population/s3_summary.csv"], index_col=[0]
+    if save_local:
+        try:
+            s3_summary_df = pd.read_csv("s3_summary.csv")
+
+        except FileNotFoundError:
+            pass
+
+    if s3_summary_df is None:
+        s3_summary_df = wr.s3.read_csv(
+            [f"s3://reboot-motion-{s3_metadata.org_id}/population/s3_summary.csv"], index_col=[0]
     )
 
     s3_summary_df['s3_path_delivery'] = s3_summary_df['s3_path_delivery'] + s3_metadata.file_type.value
@@ -187,6 +197,9 @@ def download_s3_summary_df(s3_metadata: S3Metadata, verbose: bool = True) -> pd.
 
     if verbose:
         display_available_df_data(s3_summary_df)
+
+    if save_local:
+        s3_summary_df.to_csv("s3_summary.csv", index=False)
 
     return s3_summary_df
 
