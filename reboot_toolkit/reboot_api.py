@@ -2,7 +2,21 @@ import json
 import os
 import requests
 
-from .datatypes import PlayerMetadata
+
+def handle_request(response) -> dict | list:
+    try:
+        response.raise_for_status()
+
+    except requests.RequestException:
+        try:
+            print(response.json())
+
+        except json.decoder.JSONDecodeError:
+            print(response)
+
+        raise
+
+    return response.json()
 
 
 def get_request(
@@ -24,19 +38,29 @@ def get_request(
         timeout=timeout,
     )
 
-    try:
-        response.raise_for_status()
+    return handle_request(response)
 
-    except requests.RequestException:
-        try:
-            print(response.json())
 
-        except json.decoder.JSONDecodeError:
-            print(response)
+def post_request(
+    request_uri: str, headers: dict, params: dict | None = None, timeout: int = 60
+) -> dict | list:
+    """
+    Make a post request for an API.
 
-        raise
+    :param request_uri: the uri for the request
+    :param headers: the headers for the request
+    :param params: dict of params for the request
+    :param timeout: seconds to wait for the request
+    :return: json response dict
+    """
+    response = requests.post(
+        request_uri,
+        json=params if isinstance(params, dict) else {},
+        headers=headers,
+        timeout=timeout,
+    )
 
-    return response.json()
+    return handle_request(response)
 
 
 class RebootApi(object):
@@ -82,4 +106,22 @@ class RebootApi(object):
             request_uri=f"{self.base_url}/sessions",
             headers=self.headers,
             params=params,
+        )
+
+    def post_data_export(
+        self,
+        session_id: str,
+        movement_type_id: int,
+        org_player_id: str,
+        data_type: str,
+        data_format: str = "parquet",
+        aggregate: bool = False,
+        return_column_info: bool = False,
+    ):
+        json_dict = {k: v for k, v in locals().items() if k != "self" and v is not None}
+
+        return post_request(
+            request_uri=f"{self.base_url}/data_export",
+            headers=self.headers,
+            params=json_dict,
         )
