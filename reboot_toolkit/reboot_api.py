@@ -48,16 +48,6 @@ class RebootApi(object):
         """Close the requests session when exiting a context manager."""
         self.close()
 
-    def open(self) -> None:
-        """Open the requests session and set default values."""
-        self.requests_session = requests.Session()
-        self.requests_session.headers.update(self.headers)
-        self.requests_session.params = {"limit": self.default_query_limit}
-
-    def close(self) -> None:
-        """Close the requests session."""
-        self.requests_session.close()
-
     def _request(
         self,
         method: str,
@@ -106,6 +96,16 @@ class RebootApi(object):
             raise
 
         return response.json()
+
+    def open(self) -> None:
+        """Open the requests session and set default values."""
+        self.requests_session = requests.Session()
+        self.requests_session.headers.update(self.headers)
+        self.requests_session.params = {"limit": self.default_query_limit}
+
+    def close(self) -> None:
+        """Close the requests session."""
+        self.requests_session.close()
 
     def get_mocap_types(self, return_id_lookup: bool = True) -> list | dict:
         """
