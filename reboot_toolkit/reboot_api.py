@@ -9,6 +9,7 @@ import requests
 
 
 def locals_to_input(local_vars: dict) -> dict:
+    """Remove from dict where key is 'self' or value is None"""
     return {k: v for k, v in local_vars.items() if k != "self" and v is not None}
 
 
@@ -21,7 +22,7 @@ class RebootApi(object):
     ):
         """
         Initialize the reboot motion api with an api key and default headers.
-        Must open the reboot api with RebootApi.open() to make requests, or use RebootApi as a context manager
+        Must open the reboot api with RebootApi.open() to make requests, or use RebootApi as a context manager.
 
         :param api_key: the api key to use, will default to REBOOT_API_KEY environment variable if not set
         :param default_query_limit: the query limit to use as a default for all query string parameters
@@ -39,18 +40,22 @@ class RebootApi(object):
             self.requests_session = None
 
     def __enter__(self) -> "RebootApi":
+        """Open the requests session when entering a context manager."""
         self.open()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_traceback):
+        """Close the requests session when exiting a context manager."""
         self.close()
 
     def open(self) -> None:
+        """Open the requests session and set default values."""
         self.requests_session = requests.Session()
         self.requests_session.headers.update(self.headers)
         self.requests_session.params = {"limit": self.default_query_limit}
 
     def close(self) -> None:
+        """Close the requests session."""
         self.requests_session.close()
 
     def _request(
@@ -62,6 +67,18 @@ class RebootApi(object):
         timeout: int | None = None,
         input_json: dict | list | None = None,
     ):
+        """
+        Send a request to the reboot motion api via an open requests session.
+        Important note, 'params' are used for a 'get' request and 'input_json' is used for a 'post' request.
+
+        :param method: post, get, etc.
+        :param route: the reboot motion api route from the base url
+        :param params: optional query parameters, used for get requests
+        :param data: optional input data
+        :param timeout: optional timeout for the request
+        :param input_json: optional input json dict, used for post requests
+        :return: a response json object from the reboot motion api
+        """
         if self.requests_session is None:
             raise RuntimeError(
                 "Must call RebootApi.open() before making requests, or use RebootApi as a context manager"
@@ -90,11 +107,18 @@ class RebootApi(object):
 
         return response.json()
 
-    def get_mocap_types(self, return_id_lookup: bool = True) -> dict:
+    def get_mocap_types(self, return_id_lookup: bool = True) -> list | dict:
+        """
+        Return a list of mocap types, or a lookup of mocap type to mocap type id if 'return_id_lookup' is True.
+        See https://api.rebootmotion.com/docs for full documentation.
+
+        :return: list of mocap types or dict of mocap types to mocap type ids
+        """
         mocap_type_response = self._request(
             method="get",
             route="mocap_types",
         )
+
         if return_id_lookup:
             return {mocap["slug"]: mocap["id"] for mocap in mocap_type_response}
 
@@ -118,6 +142,12 @@ class RebootApi(object):
         offset: int | None = None,
         limit: int | None = None,
     ) -> dict:
+        """
+        Get a list of sessions from query parameters.
+        See https://api.rebootmotion.com/docs for full documentation.
+
+        :return: a list of sessions with session metadata
+        """
         return self._request(
             method="get",
             route="sessions",
@@ -134,7 +164,13 @@ class RebootApi(object):
         aggregate: bool = False,
         return_column_info: bool = False,
         return_data: bool = True,
-    ):
+    ) -> dict | list | pd.DataFrame:
+        """
+        Create a data export request and optionally download the resulting data if 'return_data' is True.
+        See https://api.rebootmotion.com/docs for full documentation.
+
+        :return: either the request or response, or the dataframe of resulting data
+        """
         local_vars = locals()
         return_data = local_vars.pop("return_data")
 
