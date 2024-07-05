@@ -1,8 +1,5 @@
 import os
 
-import numpy as np
-import pandas as pd
-
 import reboot_toolkit as rtk
 
 from reboot_toolkit import (
