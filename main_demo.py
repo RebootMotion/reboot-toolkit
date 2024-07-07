@@ -17,8 +17,8 @@ from reboot_toolkit import (
 def main():
     """Demo main script showcasing functionality"""
 
-    verbose = False
-    save_local = False
+    verbose = True
+    save_local = True
 
     year = int(os.environ["YEAR"])
     org_player_id = os.environ["ORG_PLAYER_ID"]
@@ -40,18 +40,20 @@ def main():
         file_type=file_type_enum,
     )
 
+    print("Downloading summary dataframe...")
+
+    s3_df = rtk.download_s3_summary_df(
+        s3_metadata, verbose=verbose, save_local=save_local
+    )
+
+    print("Creating primary segment_df...")
+
     primary_analysis_segment = PlayerMetadata(
         org_player_ids=org_player_ids,
         year=year,
         s3_metadata=s3_metadata,
     )
 
-    print("Downloading summary dataframe...")
-    s3_df = rtk.download_s3_summary_df(
-        s3_metadata, verbose=verbose, save_local=save_local
-    )
-
-    print("Creating primary segment_df...")
     primary_segment_summary_df = (
         rtk.filter_s3_summary_df(primary_analysis_segment, s3_df, verbose=verbose)
         .sort_values("session_date", ascending=True)
@@ -61,10 +63,8 @@ def main():
     session_ids = list(primary_segment_summary_df["session_id"].unique())
     s3_paths_games = list(primary_segment_summary_df["s3_path_delivery"].unique())
 
-    print("Downloading data...")
-    games_df = rtk.load_games_to_df_from_s3_paths(s3_paths_games, verbose=verbose)
-
     print("Downloading metadata...")
+
     with RebootApi() as reboot_api:
         metadata_df = rtk.export_data(
             reboot_api,
@@ -74,6 +74,10 @@ def main():
             session_ids,
             verbose=verbose,
         )
+
+    print("Downloading data...")
+
+    games_df = rtk.load_games_to_df_from_s3_paths(s3_paths_games, verbose=verbose)
 
     print("Right wrist without offsets added:", games_df["RWJC_Z"].iloc[0])
 

@@ -5,7 +5,7 @@ import os
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
-from itertools import repeat
+from itertools import repeat, chain
 from typing import Optional, Union
 
 import awswrangler as wr
@@ -26,7 +26,7 @@ from .datatypes import (
     MovementType,
     DataType,
 )
-from .reboot_api import RebootApi
+from .reboot_motion_api import RebootApi
 from .utils import handle_lambda_invocation
 
 
@@ -1049,8 +1049,13 @@ def export_data(
     :param verbose: whether to print progress
     :return: dataframe of returned data
     """
+    data_format = "parquet"
+    aggregate = False
+    return_column_info = False
+    return_data = True
+
     with ThreadPoolExecutor() as executor:
-        dfs = list(
+        nested_records = list(
             tqdm(
                 executor.map(
                     reboot_api.post_data_export,
@@ -1058,13 +1063,17 @@ def export_data(
                     repeat(MOVEMENT_TYPE_IDS_MAP[movement_type_enum.value]),
                     repeat(org_player_id),
                     repeat(data_type_enum.value),
+                    repeat(data_format),
+                    repeat(aggregate),
+                    repeat(return_column_info),
+                    repeat(return_data),
                 ),
                 total=len(session_ids),
                 disable=not verbose,
             )
         )
 
-    return pd.concat(dfs, ignore_index=True)
+    return pd.DataFrame(list(chain.from_iterable(nested_records)))
 
 
 def add_offsets_from_metadata(

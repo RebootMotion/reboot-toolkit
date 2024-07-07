@@ -2,9 +2,11 @@ import json
 import os
 
 from gzip import decompress
-from io import BytesIO, StringIO
+from io import BytesIO
+from itertools import chain
 
-import pandas as pd
+import pyarrow.csv as csv
+import pyarrow.parquet as pq
 import requests
 
 
@@ -17,8 +19,8 @@ class RebootApi(object):
     def __init__(
         self,
         api_key: str | None = None,
+        init_open: bool = False,
         default_query_limit: int = 100,
-        is_open: bool = False,
     ):
         """
         Initialize the reboot motion api with an api key and default headers.
@@ -26,14 +28,14 @@ class RebootApi(object):
 
         :param api_key: the api key to use, will default to REBOOT_API_KEY environment variable if not set
         :param default_query_limit: the query limit to use as a default for all query string parameters
-        :param is_open: whether to open the reboot api with RebootApi.open() upon first creation
+        :param init_open: whether to open the reboot api with RebootApi.open() upon first creation
         """
         self.base_url = "https://api.rebootmotion.com/"
         self.api_key = api_key or os.environ["REBOOT_API_KEY"]
         self.headers = {"x-api-key": self.api_key}
         self.default_query_limit = default_query_limit
 
-        if is_open:
+        if init_open:
             self.open()
 
         else:
@@ -106,6 +108,7 @@ class RebootApi(object):
     def close(self) -> None:
         """Close the requests session."""
         self.requests_session.close()
+        self.requests_session = None
 
     def get_mocap_types(self, return_id_lookup: bool = True) -> list | dict:
         """
@@ -163,14 +166,14 @@ class RebootApi(object):
         data_format: str = "parquet",
         aggregate: bool = False,
         return_column_info: bool = False,
-        return_data: bool = True,
-    ) -> dict | list | pd.DataFrame:
+        return_data: bool = False,
+    ) -> dict | list:
         """
         Create a data export request and optionally download the resulting data if 'return_data' is True.
         'data_format' must be 'parquet' or 'csv'.
         See https://api.rebootmotion.com/docs for full documentation.
 
-        :return: either the request or response, or the dataframe of resulting data
+        :return: either the request or response, or a list of date record dicts if 'return_data' is True
         """
         local_vars = locals()
         return_data = local_vars.pop("return_data")
@@ -189,23 +192,32 @@ class RebootApi(object):
         if not return_data:
             return response
 
+        elif not isinstance(response, dict) or "download_urls" not in response:
+            raise KeyError(
+                "data export failed - expected download_urls not in response: {}".format(
+                    response
+                )
+            )
+
         if data_format == "parquet":
-            data_list = [
-                pd.read_parquet(BytesIO(requests.get(download_url).content))
+            data_nested_list = [
+                pq.read_table(BytesIO(requests.get(download_url).content)).to_pylist()
                 for download_url in response["download_urls"]
             ]
 
         elif data_format == "csv":
-            data_list = [
-                pd.read_csv(
-                    StringIO(
-                        decompress(requests.get(download_url).content).decode("utf-8")
+            data_nested_list = [
+                csv.read_csv(
+                    BytesIO(
+                        decompress(requests.get(download_url).content)
+                        if ".csv.gz" in download_url
+                        else requests.get(download_url).content
                     )
-                )
+                ).to_pylist()
                 for download_url in response["download_urls"]
             ]
 
         else:
             raise ValueError("data_format must be parquet or csv")
 
-        return pd.concat(data_list, ignore_index=True)
+        return list(chain.from_iterable(data_nested_list))

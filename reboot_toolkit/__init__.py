@@ -13,4 +13,4 @@ from .toolkit_backend import (find_player_matches, create_interactive_widget,
                               merge_data_df_with_s3_keys, save_figs_to_html, add_offsets_from_metadata, export_data)
 from .utils import setup_aws, decorate_primary_segment_df_with_stats_api
 from .biomechanics import scale_human_xml, get_model_info, reorder_joint_angle_df_like_model
-from .reboot_api import RebootApi
+from .reboot_motion_api import RebootApi
