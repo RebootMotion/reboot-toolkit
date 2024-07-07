@@ -37,7 +37,10 @@ def read_table_from_url(download_url: str, data_format: str) -> pa.Table:
         pa_table = pq.read_table(BytesIO(downloaded_bytes))
 
     elif data_format == "csv":
-        pa_table = csv.read_csv(BytesIO(downloaded_bytes))
+        pa_table = csv.read_csv(
+            BytesIO(downloaded_bytes),
+            read_options=csv.ReadOptions(use_threads=True),
+        )
 
     else:
         raise NotImplementedError("data_format {} is not supported".format(data_format))
