@@ -6,11 +6,13 @@ import os
 
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
-from itertools import chain, repeat
+from itertools import repeat
 
+import pyarrow as pa
 import pyarrow.csv as csv
 import pyarrow.parquet as pq
 import requests
+import warnings
 
 
 def locals_to_input(local_vars: dict) -> dict:
@@ -18,8 +20,8 @@ def locals_to_input(local_vars: dict) -> dict:
     return {k: v for k, v in local_vars.items() if k != "self" and v is not None}
 
 
-def read_table_from_url(download_url: str, data_format: str) -> list[dict]:
-    """Read a parquet or csv table with pyarrow from a url and return a list of dicts."""
+def read_table_from_url(download_url: str, data_format: str) -> pa.Table:
+    """Read a parquet or csv table with pyarrow from a url."""
     if data_format == "parquet" and ".parquet" not in download_url:
         raise ValueError("data_format is parquet, but .parquet not in download_url")
 
@@ -40,7 +42,7 @@ def read_table_from_url(download_url: str, data_format: str) -> list[dict]:
     else:
         raise NotImplementedError("data_format {} is not supported".format(data_format))
 
-    return pa_table.to_pylist()
+    return pa_table
 
 
 class RebootApi(object):
@@ -195,28 +197,57 @@ class RebootApi(object):
         aggregate: bool = False,
         return_column_info: bool = False,
         return_data: bool = False,
+        return_pyarrow: bool = False,
         use_threads: bool = False,
-    ) -> dict | list:
+    ) -> dict | list | pa.Table:
         """
         Create a data export request and optionally download the resulting data if 'return_data' is True.
         'data_format' must be 'parquet' or 'csv'.
         See https://api.rebootmotion.com/docs for full documentation.
 
-        :return: either the request or response, or a list of date record dicts if 'return_data' is True
+        :return: either the response,
+        or a list of date record dicts if 'return_data' is True and 'return_pyarrow' is False,
+        or a pyarrow table if 'return_data' is True and 'return_pyarrow' is True.
         """
-        local_vars = locals()
-        return_data = local_vars.pop("return_data")
-        use_threads = local_vars.pop("use_threads")
-
         accepted_data_formats = {"parquet", "csv"}
 
         if data_format not in accepted_data_formats:
             raise ValueError("data_format must be parquet or csv")
 
+        if return_column_info and return_data:
+            raise NotImplementedError(
+                "Cannot set both return_column_info and return_data as True"
+            )
+
+        if aggregate and use_threads:
+            warnings.warn(
+                "aggregate and use_threads are both True, "
+                "but aggregate always returns just one download url so threading is not necessary"
+            )
+
+        if not return_data and return_pyarrow:
+            warnings.warn(
+                "return_pyarrow is True, but return_data is False, "
+                "setting return_data to True so pyarrow data is returned"
+            )
+            return_data = True
+
+        local_vars_for_api = {
+            "session_id",
+            "movement_type_id",
+            "org_player_id",
+            "data_type",
+            "data_format",
+            "aggregate",
+            "return_column_info",
+        }
+
         response = self._request(
             method="post",
             route="data_export",
-            input_json=locals_to_input(local_vars),
+            input_json=locals_to_input(
+                {k: v for k, v in locals().items() if k in local_vars_for_api}
+            ),
         )
 
         if not return_data:
@@ -231,7 +262,7 @@ class RebootApi(object):
 
         if use_threads:
             with ThreadPoolExecutor() as executor:
-                data_nested_list = list(
+                pyarrow_tables = list(
                     executor.map(
                         read_table_from_url,
                         response["download_urls"],
@@ -240,9 +271,14 @@ class RebootApi(object):
                 )
 
         else:
-            data_nested_list = [
+            pyarrow_tables = [
                 read_table_from_url(download_url, data_format)
                 for download_url in response["download_urls"]
             ]
 
-        return list(chain.from_iterable(data_nested_list))
+        pyarrow_table = pa.concat_tables(pyarrow_tables)
+
+        if return_pyarrow:
+            return pyarrow_table
+
+        return pyarrow_table.to_pylist()

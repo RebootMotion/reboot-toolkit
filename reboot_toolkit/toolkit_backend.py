@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import plotly
 import plotly.graph_objects as go
+import pyarrow as pa
 
 from rapidfuzz import fuzz
 from tqdm import tqdm
@@ -1050,13 +1051,14 @@ def export_data(
     :return: dataframe of returned data
     """
     data_format = "parquet"
-    aggregate = False
+    aggregate = True
     return_column_info = False
     return_data = True
+    return_pyarrow = True
     use_threads = False
 
     with ThreadPoolExecutor() as executor:
-        nested_records = list(
+        pyarrow_tables = list(
             tqdm(
                 executor.map(
                     reboot_api.post_data_export,
@@ -1068,6 +1070,7 @@ def export_data(
                     repeat(aggregate),
                     repeat(return_column_info),
                     repeat(return_data),
+                    repeat(return_pyarrow),
                     repeat(use_threads),
                 ),
                 total=len(session_ids),
@@ -1075,7 +1078,7 @@ def export_data(
             )
         )
 
-    return pd.DataFrame(list(chain.from_iterable(nested_records)))
+    return pa.concat_tables(pyarrow_tables).to_pandas()
 
 
 def add_offsets_from_metadata(
