@@ -1054,7 +1054,7 @@ def export_data(
     aggregate = True
     return_column_info = False
     return_data = True
-    return_pyarrow = True
+    as_pyarrow = True
     use_threads = False
 
     with ThreadPoolExecutor() as executor:
@@ -1070,7 +1070,7 @@ def export_data(
                     repeat(aggregate),
                     repeat(return_column_info),
                     repeat(return_data),
-                    repeat(return_pyarrow),
+                    repeat(as_pyarrow),
                     repeat(use_threads),
                 ),
                 total=len(session_ids),
