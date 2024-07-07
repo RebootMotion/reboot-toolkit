@@ -193,7 +193,7 @@ class RebootApi(object):
             return response
 
         elif not isinstance(response, dict) or "download_urls" not in response:
-            raise KeyError(
+            raise FileNotFoundError(
                 "data export failed - expected download_urls not in response: {}".format(
                     response
                 )
