@@ -6,7 +6,7 @@ matplotlib
 mjc_viewer
 mujoco<4.0.0
 numpy<2.0.0
-pandas>2.0.0,<3.0.0
+pandas<3.0.0
 pyarrow<17.0.0
 plotly
 pygwalker
