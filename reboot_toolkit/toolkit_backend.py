@@ -1053,6 +1053,7 @@ def export_data(
     aggregate = False
     return_column_info = False
     return_data = True
+    use_threads = False
 
     with ThreadPoolExecutor() as executor:
         nested_records = list(
@@ -1067,6 +1068,7 @@ def export_data(
                     repeat(aggregate),
                     repeat(return_column_info),
                     repeat(return_data),
+                    repeat(use_threads),
                 ),
                 total=len(session_ids),
                 disable=not verbose,
