@@ -197,7 +197,7 @@ class RebootApi(object):
         aggregate: bool = False,
         return_column_info: bool = False,
         return_data: bool = False,
-        return_pyarrow: bool = False,
+        as_pyarrow: bool = False,
         use_threads: bool = False,
     ) -> dict | list | pa.Table:
         """
@@ -214,9 +214,9 @@ class RebootApi(object):
         if data_format not in accepted_data_formats:
             raise ValueError("data_format must be parquet or csv")
 
-        if return_column_info and return_data:
+        if return_column_info and (return_data or as_pyarrow):
             raise NotImplementedError(
-                "Cannot set both return_column_info and return_data as True"
+                "Cannot set return_column_info as True with either return_data or as_pyarrow as True"
             )
 
         if aggregate and use_threads:
@@ -225,9 +225,9 @@ class RebootApi(object):
                 "but aggregate always returns just one download url so threading is not necessary"
             )
 
-        if not return_data and return_pyarrow:
+        if not return_data and as_pyarrow:
             warnings.warn(
-                "return_pyarrow is True, but return_data is False, "
+                "as_pyarrow is True, but return_data is False, "
                 "setting return_data to True so pyarrow data is returned"
             )
             return_data = True
@@ -278,7 +278,7 @@ class RebootApi(object):
 
         pyarrow_table = pa.concat_tables(pyarrow_tables)
 
-        if return_pyarrow:
+        if as_pyarrow:
             return pyarrow_table
 
         return pyarrow_table.to_pylist()
