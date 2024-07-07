@@ -202,12 +202,16 @@ class RebootApi(object):
     ) -> dict | list | pa.Table:
         """
         Create a data export request and optionally download the resulting data if 'return_data' is True.
+
         'data_format' must be 'parquet' or 'csv'.
+
+        Can return a pyarrow table if 'as_pyarrow' is True, which can be converted to a pandas or polars DataFrame.
+
         See https://api.rebootmotion.com/docs for full documentation.
 
-        :return: either the response,
-        or a list of date record dicts if 'return_data' is True and 'return_pyarrow' is False,
-        or a pyarrow table if 'return_data' is True and 'return_pyarrow' is True.
+        :return: either the reboot api response if return_data is False,
+        or a list of date record dicts if 'return_data' is True and 'as_pyarrow' is False,
+        or a pyarrow table if 'return_data' is True and 'as_pyarrow' is True.
         """
         accepted_data_formats = {"parquet", "csv"}
 
