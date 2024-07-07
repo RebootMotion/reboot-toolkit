@@ -1,9 +1,12 @@
+from __future__ import annotations
+
+import gzip
 import json
 import os
 
-from gzip import decompress
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
-from itertools import chain
+from itertools import chain, repeat
 
 import pyarrow.csv as csv
 import pyarrow.parquet as pq
@@ -13,6 +16,31 @@ import requests
 def locals_to_input(local_vars: dict) -> dict:
     """Remove from dict where key is 'self' or value is None"""
     return {k: v for k, v in local_vars.items() if k != "self" and v is not None}
+
+
+def read_table_from_url(download_url: str, data_format: str) -> list[dict]:
+    """Read a parquet or csv table with pyarrow from a url and return a list of dicts."""
+    if data_format == "parquet" and ".parquet" not in download_url:
+        raise ValueError("data_format is parquet, but .parquet not in download_url")
+
+    elif data_format == "csv" and ".csv" not in download_url:
+        raise ValueError("data_format is csv, but .csv not in download_url")
+
+    downloaded_bytes = requests.get(download_url).content
+
+    if any(suffix in download_url for suffix in (".parquet.gz", ".csv.gz")):
+        downloaded_bytes = gzip.decompress(downloaded_bytes)
+
+    if data_format == "parquet":
+        pa_table = pq.read_table(BytesIO(downloaded_bytes))
+
+    elif data_format == "csv":
+        pa_table = csv.read_csv(BytesIO(downloaded_bytes))
+
+    else:
+        raise NotImplementedError("data_format {} is not supported".format(data_format))
+
+    return pa_table.to_pylist()
 
 
 class RebootApi(object):
@@ -167,6 +195,7 @@ class RebootApi(object):
         aggregate: bool = False,
         return_column_info: bool = False,
         return_data: bool = False,
+        use_threads: bool = False,
     ) -> dict | list:
         """
         Create a data export request and optionally download the resulting data if 'return_data' is True.
@@ -177,6 +206,7 @@ class RebootApi(object):
         """
         local_vars = locals()
         return_data = local_vars.pop("return_data")
+        use_threads = local_vars.pop("use_threads")
 
         accepted_data_formats = {"parquet", "csv"}
 
@@ -199,25 +229,20 @@ class RebootApi(object):
                 )
             )
 
-        if data_format == "parquet":
-            data_nested_list = [
-                pq.read_table(BytesIO(requests.get(download_url).content)).to_pylist()
-                for download_url in response["download_urls"]
-            ]
-
-        elif data_format == "csv":
-            data_nested_list = [
-                csv.read_csv(
-                    BytesIO(
-                        decompress(requests.get(download_url).content)
-                        if ".csv.gz" in download_url
-                        else requests.get(download_url).content
+        if use_threads:
+            with ThreadPoolExecutor() as executor:
+                data_nested_list = list(
+                    executor.map(
+                        read_table_from_url,
+                        response["download_urls"],
+                        repeat(data_format),
                     )
-                ).to_pylist()
-                for download_url in response["download_urls"]
-            ]
+                )
 
         else:
-            raise ValueError("data_format must be parquet or csv")
+            data_nested_list = [
+                read_table_from_url(download_url, data_format)
+                for download_url in response["download_urls"]
+            ]
 
         return list(chain.from_iterable(data_nested_list))
