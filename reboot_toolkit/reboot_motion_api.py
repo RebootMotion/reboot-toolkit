@@ -282,7 +282,8 @@ class RebootClient(object):
         default_query_limit: int = 100,
     ):
         """
-        Initialize the reboot motion api with required headers, a requests Session, and default request parameters.
+        Create a client to access the reboot motion api
+        with required headers, a requests Session, and default request parameters.
 
         :param api_key: the api key to use, will default to REBOOT_API_KEY environment variable if not set
         :param requests_session: the requests.Session() to use to make requests, or None to use a default Session
@@ -301,17 +302,3 @@ class RebootClient(object):
         self.mocap_types = MocapTypesService(self._requestor)
         self.sessions = SessionsService(self._requestor)
         self.data_exports = DataExportsService(self._requestor)
-
-
-# def main():
-#     from dotenv import load_dotenv
-#     load_dotenv()
-#
-#     reboot_client = RebootClient(default_query_limit=150)
-#
-#     sessions = reboot_client.sessions.list()
-#     print(len(sessions))
-#
-#
-# if __name__ == "__main__":
-#     main()
