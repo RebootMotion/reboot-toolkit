@@ -1,6 +1,7 @@
 import os
 
 import reboot_toolkit as rtk
+import requests
 
 from reboot_toolkit import (
     FileType,
@@ -9,7 +10,7 @@ from reboot_toolkit import (
     MovementType,
     PlayerMetadata,
     S3Metadata,
-    RebootApi,
+    RebootClient,
     DataType,
 )
 
@@ -65,9 +66,9 @@ def main():
 
     print("Downloading metadata...")
 
-    with RebootApi() as reboot_api:
+    with requests.Session() as requests_session:
         metadata_df = rtk.export_data(
-            reboot_api,
+            RebootClient(requests_session=requests_session),
             org_player_id,
             movement_type_enum,
             DataType.METADATA,

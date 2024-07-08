@@ -27,7 +27,7 @@ from .datatypes import (
     MovementType,
     DataType,
 )
-from .reboot_motion_api import RebootApi
+from .reboot_motion_api import RebootClient
 from .utils import handle_lambda_invocation
 
 
@@ -1032,7 +1032,7 @@ def save_figs_to_html(
 
 
 def export_data(
-    reboot_api: RebootApi,
+    reboot_client: RebootClient,
     org_player_id: str,
     movement_type_enum: MovementType,
     data_type_enum: DataType,
@@ -1042,7 +1042,7 @@ def export_data(
     """
     Export data using the Reboot API.
 
-    :param reboot_api: RebootApi object, must be opened first
+    :param reboot_client: RebootClient object
     :param org_player_id: the org player ID to download data for
     :param movement_type_enum: the movement type enum to download data for
     :param data_type_enum: the data type enum to download
@@ -1061,7 +1061,7 @@ def export_data(
         pyarrow_tables = list(
             tqdm(
                 executor.map(
-                    reboot_api.post_data_export,
+                    reboot_client.data_exports.create,
                     session_ids,
                     repeat(MOVEMENT_TYPE_IDS_MAP[movement_type_enum.value]),
                     repeat(org_player_id),

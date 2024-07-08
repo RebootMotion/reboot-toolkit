@@ -5,6 +5,7 @@ import json
 import os
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from io import BytesIO
 from itertools import repeat
 
@@ -13,8 +14,18 @@ import requests
 import warnings
 
 
+DEFAULT_API_BASE = "https://api.rebootmotion.com/"
+
+
+def create_lookup(instance_list: list[dict]) -> dict:
+    """Return a lookup from instance slug to instance ID from a list of object instances."""
+    return {
+        instance_dict["slug"]: instance_dict["id"] for instance_dict in instance_list
+    }
+
+
 def locals_to_input(local_vars: dict) -> dict:
-    """Remove from dict where key is 'self' or value is None"""
+    """Remove from dict where key is 'self' or value is None."""
     return {k: v for k, v in local_vars.items() if k != "self" and v is not None}
 
 
@@ -46,40 +57,16 @@ def read_table_from_url(download_url: str, data_format: str) -> pa.Table:
     return pa_table
 
 
-class RebootApi(object):
-    def __init__(
-        self,
-        api_key: str | None = None,
-        init_open: bool = False,
-        default_query_limit: int = 100,
-    ):
-        """
-        Initialize the reboot motion api with an api key and default headers.
-        Must open the reboot api with RebootApi.open() to make requests, or use RebootApi as a context manager.
+class _APIRequestor(object):
+    def __init__(self, base_url: str, requests_session: requests.Session):
+        self.base_url = base_url
+        self.requests_session = requests_session
 
-        :param api_key: the api key to use, will default to REBOOT_API_KEY environment variable if not set
-        :param default_query_limit: the query limit to use as a default for all query string parameters
-        :param init_open: whether to open the reboot api with RebootApi.open() upon first creation
-        """
-        self.base_url = "https://api.rebootmotion.com/"
-        self.api_key = api_key or os.environ["REBOOT_API_KEY"]
-        self.headers = {"x-api-key": self.api_key}
-        self.default_query_limit = default_query_limit
 
-        if init_open:
-            self.open()
-
-        else:
-            self.requests_session = None
-
-    def __enter__(self) -> "RebootApi":
-        """Open the requests session when entering a context manager."""
-        self.open()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_traceback):
-        """Close the requests session when exiting a context manager."""
-        self.close()
+class RebootService(object):
+    def __init__(self, requestor: _APIRequestor):
+        self._base_url = requestor.base_url
+        self._requests_session = requestor.requests_session
 
     def _request(
         self,
@@ -102,14 +89,9 @@ class RebootApi(object):
         :param input_json: optional input json dict, used for post requests
         :return: a response json object from the reboot motion api
         """
-        if self.requests_session is None:
-            raise RuntimeError(
-                "Must call RebootApi.open() before making requests, or use RebootApi as a context manager"
-            )
-
-        response = self.requests_session.request(
+        response = self._requests_session.request(
             method=method,
-            url=f"{self.base_url}/{route}",
+            url=f"{self._base_url}/{route}",
             params=params,
             data=data,
             timeout=timeout,
@@ -130,18 +112,12 @@ class RebootApi(object):
 
         return response.json()
 
-    def open(self) -> None:
-        """Open the requests session and set default values."""
-        self.requests_session = requests.Session()
-        self.requests_session.headers.update(self.headers)
-        self.requests_session.params = {"limit": self.default_query_limit}
 
-    def close(self) -> None:
-        """Close the requests session."""
-        self.requests_session.close()
-        self.requests_session = None
+class MocapTypesService(RebootService):
+    def __init__(self, requestor: _APIRequestor):
+        super().__init__(requestor)
 
-    def get_mocap_types(self, return_id_lookup: bool = True) -> list | dict:
+    def list(self, return_id_lookup: bool = False) -> list | dict:
         """
         Return a list of mocap types, or a lookup of mocap type to mocap type id if 'return_id_lookup' is True.
         See https://api.rebootmotion.com/docs for full documentation.
@@ -154,11 +130,16 @@ class RebootApi(object):
         )
 
         if return_id_lookup:
-            return {mocap["slug"]: mocap["id"] for mocap in mocap_type_response}
+            return create_lookup(mocap_type_response)
 
         return mocap_type_response
 
-    def get_sessions(
+
+class SessionsService(RebootService):
+    def __init__(self, requestor: _APIRequestor):
+        super().__init__(requestor)
+
+    def list(
         self,
         created_at: list[str] | None = None,
         created_since: str | None = None,
@@ -188,7 +169,12 @@ class RebootApi(object):
             params=locals_to_input(locals()),
         )
 
-    def post_data_export(
+
+class DataExportsService(RebootService):
+    def __init__(self, requestor: _APIRequestor):
+        super().__init__(requestor)
+
+    def create(
         self,
         session_id: str,
         movement_type_id: int,
@@ -203,10 +189,9 @@ class RebootApi(object):
     ) -> dict | list | pa.Table:
         """
         Create a data export request and optionally download the resulting data if 'return_data' is True.
-
         'data_format' must be 'parquet' or 'csv'.
 
-        Can return a pyarrow table if 'as_pyarrow' is True, which can be converted to a pandas or polars DataFrame.
+        Can return a pyarrow table if 'as_pyarrow' is True, which can easily be used with Pandas or Polars.
 
         See https://api.rebootmotion.com/docs for full documentation.
 
@@ -287,3 +272,46 @@ class RebootApi(object):
             return pyarrow_table
 
         return pyarrow_table.to_pylist()
+
+
+class RebootClient(object):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        requests_session: requests.Session | None = None,
+        default_query_limit: int = 100,
+    ):
+        """
+        Initialize the reboot motion api with required headers, a requests Session, and default request parameters.
+
+        :param api_key: the api key to use, will default to REBOOT_API_KEY environment variable if not set
+        :param requests_session: the requests.Session() to use to make requests, or None to use a default Session
+        :param default_query_limit: the query limit to use as a default for all query string parameters
+        """
+        if requests_session is None:
+            requests_session = requests.Session()
+
+        requests_session.headers.update(
+            {"x-api-key": api_key or os.environ["REBOOT_API_KEY"]}
+        )
+        requests_session.params = {"limit": default_query_limit}
+
+        self._requestor = _APIRequestor(DEFAULT_API_BASE, requests_session)
+
+        self.mocap_types = MocapTypesService(self._requestor)
+        self.sessions = SessionsService(self._requestor)
+        self.data_exports = DataExportsService(self._requestor)
+
+
+# def main():
+#     from dotenv import load_dotenv
+#     load_dotenv()
+#
+#     reboot_client = RebootClient(default_query_limit=150)
+#
+#     sessions = reboot_client.sessions.list()
+#     print(len(sessions))
+#
+#
+# if __name__ == "__main__":
+#     main()
