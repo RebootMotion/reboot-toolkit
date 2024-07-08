@@ -9,8 +9,6 @@ from io import BytesIO
 from itertools import repeat
 
 import pyarrow as pa
-import pyarrow.csv as csv
-import pyarrow.parquet as pq
 import requests
 import warnings
 
@@ -34,12 +32,12 @@ def read_table_from_url(download_url: str, data_format: str) -> pa.Table:
         downloaded_bytes = gzip.decompress(downloaded_bytes)
 
     if data_format == "parquet":
-        pa_table = pq.read_table(BytesIO(downloaded_bytes))
+        pa_table = pa.parquet.read_table(BytesIO(downloaded_bytes))
 
     elif data_format == "csv":
-        pa_table = csv.read_csv(
+        pa_table = pa.csv.read_csv(
             BytesIO(downloaded_bytes),
-            read_options=csv.ReadOptions(use_threads=True),
+            read_options=pa.csv.ReadOptions(use_threads=True),
         )
 
     else:
@@ -226,12 +224,6 @@ class RebootApi(object):
                 "Cannot set return_column_info as True with either return_data or as_pyarrow as True"
             )
 
-        if aggregate and use_threads:
-            warnings.warn(
-                "aggregate and use_threads are both True, "
-                "but aggregate always returns just one download url so threading is not necessary"
-            )
-
         if not return_data and as_pyarrow:
             warnings.warn(
                 "as_pyarrow is True, but return_data is False, "
@@ -260,30 +252,36 @@ class RebootApi(object):
         if not return_data:
             return response
 
-        elif not isinstance(response, dict) or "download_urls" not in response:
+        elif not isinstance(response, dict) or not response.get("download_urls"):
             raise FileNotFoundError(
                 "data export failed - expected download_urls not in response: {}".format(
                     response
                 )
             )
 
-        if use_threads:
-            with ThreadPoolExecutor() as executor:
-                pyarrow_tables = list(
-                    executor.map(
-                        read_table_from_url,
-                        response["download_urls"],
-                        repeat(data_format),
-                    )
-                )
+        elif len(response["download_urls"]) == 1:
+            pyarrow_table = read_table_from_url(
+                response["download_urls"][0], data_format
+            )
 
         else:
-            pyarrow_tables = [
-                read_table_from_url(download_url, data_format)
-                for download_url in response["download_urls"]
-            ]
+            if use_threads:
+                with ThreadPoolExecutor() as executor:
+                    pyarrow_tables = list(
+                        executor.map(
+                            read_table_from_url,
+                            response["download_urls"],
+                            repeat(data_format),
+                        )
+                    )
 
-        pyarrow_table = pa.concat_tables(pyarrow_tables)
+            else:
+                pyarrow_tables = [
+                    read_table_from_url(download_url, data_format)
+                    for download_url in response["download_urls"]
+                ]
+
+            pyarrow_table = pa.concat_tables(pyarrow_tables)
 
         if as_pyarrow:
             return pyarrow_table
