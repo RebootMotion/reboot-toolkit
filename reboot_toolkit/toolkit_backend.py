@@ -162,9 +162,9 @@ def create_interactive_widget(s3_df: pd.DataFrame) -> widgets.VBox:
         ),
         session_date_end=widgets.DatePicker(description="End Range", disabled=False),
         year=widgets.IntText(
-            value=2023,
+            value=2024,
             min=2020,
-            max=2024,
+            max=2025,
             step=1,
             description="Year (0 = All)",
             disabled=False,
@@ -1082,7 +1082,7 @@ def export_data(
 
 
 def add_offsets_from_metadata(
-    data_df: pd.DataFrame, metadata_df: pd.DataFrame, movement_type_enum
+    data_df: pd.DataFrame, metadata_df: pd.DataFrame, movement_type_enum: MovementType
 ) -> pd.DataFrame:
     """
     Add the X, Y, and Z offsets from the metadata to the position columns of an existing dataframe.
