@@ -279,7 +279,7 @@ class RebootClient(object):
         self,
         api_key: str | None = None,
         requests_session: requests.Session | None = None,
-        default_query_limit: int = 100,
+        default_query_limit: int | None = None,
     ):
         """
         Create a client to access the reboot motion api
@@ -287,7 +287,7 @@ class RebootClient(object):
 
         :param api_key: the api key to use, will default to REBOOT_API_KEY environment variable if not set
         :param requests_session: the requests.Session() to use to make requests, or None to use a default Session
-        :param default_query_limit: the query limit to use as a default for all query string parameters
+        :param default_query_limit: optional query limit to use as a default for all query string parameters
         """
         if requests_session is None:
             requests_session = requests.Session()
@@ -295,7 +295,9 @@ class RebootClient(object):
         requests_session.headers.update(
             {"x-api-key": api_key or os.environ["REBOOT_API_KEY"]}
         )
-        requests_session.params = {"limit": default_query_limit}
+
+        if default_query_limit is not None:
+            requests_session.params = {"limit": default_query_limit}
 
         self._requestor = _APIRequestor(DEFAULT_API_BASE, requests_session)
 
