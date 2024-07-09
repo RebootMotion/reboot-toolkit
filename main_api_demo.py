@@ -12,7 +12,8 @@ def main():
 
     with requests.Session() as requests_session:
         reboot_client = RebootClient(
-            requests_session=requests_session, default_query_limit=default_query_limit
+            requests_session=requests_session,
+            default_request_params={"limit": default_query_limit},
         )
 
         mocap_types = reboot_client.mocap_types.list()

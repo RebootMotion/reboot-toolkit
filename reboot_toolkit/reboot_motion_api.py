@@ -5,7 +5,6 @@ import json
 import os
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from io import BytesIO
 from itertools import repeat
 
@@ -14,7 +13,7 @@ import requests
 import warnings
 
 
-DEFAULT_API_BASE = "https://api.rebootmotion.com/"
+DEFAULT_API_BASE_URL = "https://api.rebootmotion.com/"
 
 
 def create_lookup(instance_list: list[dict]) -> dict:
@@ -58,8 +57,26 @@ def read_table_from_url(download_url: str, data_format: str) -> pa.Table:
 
 
 class _APIRequestor(object):
-    def __init__(self, base_url: str, requests_session: requests.Session):
+    def __init__(
+        self,
+        base_url: str,
+        requests_session: requests.Session | None = None,
+        request_headers: dict | None = None,
+        default_request_params: dict | None = None,
+    ):
+        """Set the base url for the api, and set input values for the requests session."""
+
         self.base_url = base_url
+
+        if requests_session is None:
+            requests_session = requests.Session()
+
+        if request_headers:
+            requests_session.headers.update(request_headers)
+
+        if default_request_params:
+            requests_session.params = default_request_params
+
         self.requests_session = requests_session
 
 
@@ -279,27 +296,30 @@ class RebootClient(object):
         self,
         api_key: str | None = None,
         requests_session: requests.Session | None = None,
-        default_query_limit: int | None = None,
+        default_request_params: dict | None = None,
     ):
         """
-        Create a client to access the reboot motion api
-        with required headers, a requests Session, and default request parameters.
+        Create a client to access the reboot motion api with the desired base url and a requests session.
 
         :param api_key: the api key to use, will default to REBOOT_API_KEY environment variable if not set
         :param requests_session: the requests.Session() to use to make requests, or None to use a default Session
-        :param default_query_limit: optional query limit to use as a default for all query string parameters
+        :param default_request_params: optional query params to use as a default for all requests
         """
-        if requests_session is None:
-            requests_session = requests.Session()
 
-        requests_session.headers.update(
-            {"x-api-key": api_key or os.environ["REBOOT_API_KEY"]}
+        api_key = api_key or os.getenv("REBOOT_API_KEY")
+
+        if api_key is None:
+            raise PermissionError(
+                "No api_key set as input to the Client, or found in the environment as 'REBOOT_API_KEY' - "
+                "Hint: Create a Reboot API key in your Reboot Dashboard at dashboard.rebootmotion.com"
+            )
+
+        self._requestor = _APIRequestor(
+            base_url=DEFAULT_API_BASE_URL,
+            requests_session=requests_session,
+            request_headers={"x-api-key": api_key},
+            default_request_params=default_request_params,
         )
-
-        if default_query_limit is not None:
-            requests_session.params = {"limit": default_query_limit}
-
-        self._requestor = _APIRequestor(DEFAULT_API_BASE, requests_session)
 
         self.mocap_types = MocapTypesService(self._requestor)
         self.sessions = SessionsService(self._requestor)
