@@ -754,9 +754,8 @@ def filter_pop_df(
     :return: the filtered and down-sampled population dataframe
     """
 
-    assert len(mean_df) == len(
-        std_df
-    ), "Mismatched frames between mean and std population data"
+    if len(mean_df) != len(std_df):
+        raise IndexError("Mismatched frames between mean and std population data")
 
     df = mean_df[[time_col, *angle_cols]].copy()
 
@@ -1101,13 +1100,14 @@ def add_offsets_from_metadata(
             )
         )
 
-    assert set(data_df["org_movement_id"]).issubset(
+    if not set(data_df["org_movement_id"]).issubset(
         set(metadata_df["org_movement_id"])
-    ), (
-        "All org movement ids in data_df must be found in metadata_df, "
-        "but some were not found: "
-        f"{list(set(data_df['org_movement_id']).difference(set(metadata_df['org_movement_id'])))}"
-    )
+    ):
+        raise IndexError(
+            "All org movement ids in data_df must be found in metadata_df, "
+            "but some were not found: "
+            f"{list(set(data_df['org_movement_id']).difference(set(metadata_df['org_movement_id'])))}"
+        )
 
     base_cols = list(data_df)
 
