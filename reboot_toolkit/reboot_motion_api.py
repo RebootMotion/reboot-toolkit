@@ -51,7 +51,9 @@ def read_table_from_url(download_url: str, data_format: str) -> pa.Table:
         )
 
     else:
-        raise NotImplementedError("data_format {} is not supported".format(data_format))
+        raise NotImplementedError(
+            "data_format {} must be parquet or csv".format(data_format)
+        )
 
     return pa_table
 

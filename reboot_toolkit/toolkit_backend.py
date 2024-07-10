@@ -1101,22 +1101,25 @@ def add_offsets_from_metadata(
             )
         )
 
-    assert set(data_df["org_movement_id"]) == set(
-        metadata_df["org_movement_id"]
-    ), "Mismatched org movement ids in data_df and metadata_df, but must be matched to add offsets"
+    assert set(data_df["org_movement_id"]).issubset(
+        set(metadata_df["org_movement_id"])
+    ), (
+        "All org movement ids in data_df must be found in metadata_df, "
+        "but some were not found: "
+        f"{list(set(data_df['org_movement_id']).difference(set(metadata_df['org_movement_id'])))}"
+    )
 
     base_cols = list(data_df)
 
     offset_cols = [
-        "org_movement_id",
         "X_offset",
         "Y_offset",
         "Z_offset",
     ]
 
-    data_df = data_df.merge(metadata_df[offset_cols], on="org_movement_id", how="left")
-
-    cols_to_drop = []
+    data_df = data_df.merge(
+        metadata_df[["org_movement_id"] + offset_cols], on="org_movement_id", how="left"
+    )
 
     for coord in ("X", "Y", "Z"):
         coord_cols = [c for c in base_cols if c.endswith(f"_{coord}")]
@@ -1126,8 +1129,6 @@ def add_offsets_from_metadata(
             (1, len(coord_cols)),
         )
 
-        cols_to_drop.append(f"{coord}_offset")
-
-    data_df.drop(columns=cols_to_drop, inplace=True)
+    data_df.drop(columns=offset_cols, inplace=True)
 
     return data_df
