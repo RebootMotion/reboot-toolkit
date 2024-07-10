@@ -12,5 +12,4 @@ python-dotenv<2.0.0
 rapidfuzz<4.0.0
 requests<3.0.0
 tqdm<5.0.0
-
 git+https://github.com/RebootMotion/mlb-statsapi.git@v1.2.0#egg=mlb_statsapi
