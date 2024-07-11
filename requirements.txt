@@ -3,6 +3,7 @@ boto3<2.0.0
 IPython<9.0.0
 ipywidgets<9.0.0
 matplotlib<4.0.0
+mlb_statsapi@git+https://github.com/RebootMotion/mlb-statsapi.git@v1.2.0
 mujoco<4.0.0
 numpy<2.0.0
 pandas<3.0.0
@@ -12,4 +13,3 @@ python-dotenv<2.0.0
 rapidfuzz<4.0.0
 requests<3.0.0
 tqdm<5.0.0
-mlb_statsapi@git+https://github.com/RebootMotion/mlb-statsapi.git@v1.2.0
