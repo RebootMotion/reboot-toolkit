@@ -3,7 +3,7 @@ import logging
 import os
 
 from getpass import getpass
-from typing import Any, Optional, Union
+from typing import Any, Union
 from uuid import UUID
 
 import boto3
@@ -16,7 +16,12 @@ from mlb_statsapi import GameRequest, Game
 logger = logging.getLogger(__name__)
 
 
-def setup_aws() -> boto3.Session:
+def setup_aws(verbose: bool = True) -> boto3.Session:
+    """
+    Set up the necessary AWS credentials to connect to the AWS API
+    :param verbose: whether to print status info
+    :return: the AWS session
+    """
 
     load_dotenv()
 
@@ -44,11 +49,13 @@ def setup_aws() -> boto3.Session:
 
     boto3_session = boto3.Session(**session_credentials)
 
-    print('Org ID:')
-    print(os.environ['ORG_ID'])
-    print()
-    print('Current Boto3 Session:')
-    print(boto3_session)
+    if verbose:
+        print('Org ID:')
+        print(os.environ['ORG_ID'])
+        print()
+        print('Current Boto3 Session:')
+        print(boto3_session)
+
     return boto3_session
 
 

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import os
+
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from itertools import repeat, chain
 from typing import Optional, Union
 
 import awswrangler as wr
@@ -12,14 +15,27 @@ import numpy as np
 import pandas as pd
 import plotly
 import plotly.graph_objects as go
+import pyarrow as pa
 
 from rapidfuzz import fuzz
-from . import utils as ut
-from .datatypes import PlayerMetadata, S3Metadata
+from tqdm import tqdm
+
+from .datatypes import (
+    PlayerMetadata,
+    S3Metadata,
+    MOVEMENT_TYPE_IDS_MAP,
+    MovementType,
+    DataType,
+)
+from .reboot_motion_api import RebootClient
+from .utils import handle_lambda_invocation
 
 
 def find_player_matches(
-        s3_df: pd.DataFrame, name_to_match: str, match_threshold: float = 50., max_results: int = 5
+    s3_df: pd.DataFrame,
+    name_to_match: str,
+    match_threshold: float = 50.0,
+    max_results: int = 5,
 ) -> pd.DataFrame:
     """
     Use the rapid fuzz library to find all players matching an input name above a threshold.
@@ -33,15 +49,23 @@ def find_player_matches(
 
     name_to_match = name_to_match.lower()
 
-    players_df = s3_df[['first_name', 'last_name', 'org_player_id']].copy().drop_duplicates(subset=['org_player_id'])
-
-    players_df['name'] = players_df['first_name'].str.lower() + ' ' + players_df['last_name'].str.lower()
-
-    players_df['match'] = players_df['name'].transform(lambda x: fuzz.ratio(x, name_to_match))
-
-    matched_results_df = players_df.loc[players_df['match'] > match_threshold].sort_values(
-        by='match', ascending=False, ignore_index=True
+    players_df = (
+        s3_df[["first_name", "last_name", "org_player_id"]]
+        .copy()
+        .drop_duplicates(subset=["org_player_id"])
     )
+
+    players_df["name"] = (
+        players_df["first_name"].str.lower() + " " + players_df["last_name"].str.lower()
+    )
+
+    players_df["match"] = players_df["name"].transform(
+        lambda x: fuzz.ratio(x, name_to_match)
+    )
+
+    matched_results_df = players_df.loc[
+        players_df["match"] > match_threshold
+    ].sort_values(by="match", ascending=False, ignore_index=True)
 
     if len(matched_results_df) > max_results:
         matched_results_df = matched_results_df.iloc[:max_results]
@@ -50,12 +74,12 @@ def find_player_matches(
 
 
 def filter_df_on_custom_metadata(
-        data_df: pd.DataFrame,
-        custom_metadata_df: pd.DataFrame,
-        play_id_col: str,
-        metadata_col: str | None,
-        vals_to_keep: list[Union[int, float, str]] | None,
-        drop_extra_cols: bool = False
+    data_df: pd.DataFrame,
+    custom_metadata_df: pd.DataFrame,
+    play_id_col: str,
+    metadata_col: str | None,
+    vals_to_keep: list[Union[int, float, str]] | None,
+    drop_extra_cols: bool = False,
 ):
     """
     Filter segment dataframe using a dataframe of custom metadata with a play ID column for merging.
@@ -73,22 +97,32 @@ def filter_df_on_custom_metadata(
         custom_metadata_df = custom_metadata_df[[play_id_col, metadata_col]].copy()
 
     data_df = data_df.merge(
-        custom_metadata_df, left_on='org_movement_id', right_on=play_id_col, how='left'
-    ).drop(columns=[col for col in custom_metadata_df.columns if col.lower().startswith('unnamed')])
+        custom_metadata_df, left_on="org_movement_id", right_on=play_id_col, how="left"
+    ).drop(
+        columns=[
+            col
+            for col in custom_metadata_df.columns
+            if col.lower().startswith("unnamed")
+        ]
+    )
 
     if vals_to_keep:
-        return data_df.loc[data_df[metadata_col].isin(vals_to_keep)].copy().reset_index(drop=True)
+        return (
+            data_df.loc[data_df[metadata_col].isin(vals_to_keep)]
+            .copy()
+            .reset_index(drop=True)
+        )
 
     return data_df
 
 
 def widget_interface(
-        org_player_ids: tuple[str],
-        session_nums: tuple[str],
-        session_dates: tuple[str],
-        session_date_start: date,
-        session_date_end: date,
-        year: int
+    org_player_ids: tuple[str],
+    session_nums: tuple[str],
+    session_dates: tuple[str],
+    session_date_start: date,
+    session_date_end: date,
+    year: int,
 ) -> dict:
     """Create a dict from kwargs input by an ipywidget."""
     return {
@@ -97,7 +131,7 @@ def widget_interface(
         "session_dates": list(session_dates) if session_dates else None,
         "session_date_start": session_date_start,
         "session_date_end": session_date_end,
-        "year": None if year == 0 else year
+        "year": None if year == 0 else year,
     }
 
 
@@ -106,43 +140,61 @@ def create_interactive_widget(s3_df: pd.DataFrame) -> widgets.VBox:
     w1 = widgets.interactive(
         widget_interface,
         org_player_ids=widgets.SelectMultiple(
-            options=sorted(list(s3_df['org_player_id'].unique())), description='Orgs Players', disabled=False
+            options=sorted(list(s3_df["org_player_id"].unique())),
+            description="Orgs Players",
+            disabled=False,
         ),
         session_nums=widgets.SelectMultiple(
             options=sorted(
-                list(s3_df['session_num'].unique())
-                + list(s3_df['org_session_id'].dropna().unique())
+                list(s3_df["session_num"].unique())
+                + list(s3_df["org_session_id"].dropna().unique())
             ),
-            description='Session Nums',
-            disabled=False
+            description="Session Nums",
+            disabled=False,
         ),
         session_dates=widgets.SelectMultiple(
-            options=sorted(list(s3_df['session_date'].astype(str).unique())), description='Dates', disabled=False
+            options=sorted(list(s3_df["session_date"].astype(str).unique())),
+            description="Dates",
+            disabled=False,
         ),
         session_date_start=widgets.DatePicker(
-            description='Start Range', disabled=False
+            description="Start Range", disabled=False
         ),
-        session_date_end=widgets.DatePicker(
-            description='End Range', disabled=False
-        ),
+        session_date_end=widgets.DatePicker(description="End Range", disabled=False),
         year=widgets.IntText(
-            value=2023, min=2020, max=2024, step=1, description='Year (0 = All)', disabled=False
-        )
+            value=2024,
+            min=2020,
+            max=2025,
+            step=1,
+            description="Year (0 = All)",
+            disabled=False,
+        ),
     )
     w2 = widgets.Button(
-        description='Submit',
+        description="Submit",
         disabled=False,
-        button_style='success', # 'success', 'info', 'warning', 'danger' or ''
-        tooltip='Submit',
-        icon='check' # (FontAwesome names without the `fa-` prefix)
+        button_style="success",  # 'success', 'info', 'warning', 'danger' or ''
+        tooltip="Submit",
+        icon="check",  # (FontAwesome names without the `fa-` prefix)
     )
-    w3 = widgets.Output(layout={'border': '1px solid black'})
+    w3 = widgets.Output(layout={"border": "1px solid black"})
+
     def f(_):
         with w3:
             w3.clear_output()
             print(w1.result)
+
     w2.on_click(f)
-    return widgets.VBox([widgets.Label("Populate any subset of the filters. Rerun cell to clear selection"), w1, w2, w3])
+    return widgets.VBox(
+        [
+            widgets.Label(
+                "Populate any subset of the filters. Rerun cell to clear selection"
+            ),
+            w1,
+            w2,
+            w3,
+        ]
+    )
 
 
 def display_available_df_data(df: pd.DataFrame) -> None:
@@ -151,7 +203,7 @@ def display_available_df_data(df: pd.DataFrame) -> None:
 
     :param df: the dataframe to be displayed
     """
-    print('Available data...')
+    print("Available data...")
     print()
 
     for col in df.columns:
@@ -160,29 +212,59 @@ def display_available_df_data(df: pd.DataFrame) -> None:
         print()
 
 
-def download_s3_summary_df(s3_metadata: S3Metadata) -> pd.DataFrame:
+def download_s3_summary_df(
+    s3_metadata: S3Metadata, verbose: bool = True, save_local: bool = False
+) -> pd.DataFrame:
     """
     Download the CSV that summarizes all the current data in S3 into a dataframe.
 
     :param s3_metadata: the S3Metadata object to use to download the S3 summary CSV
+    :param verbose: whether to print available info from the dataframe
+    :param save_local: whether to save the CSV as a local file
     :return: dataframe of all the data in S3
     """
+    s3_summary_df = None
+    status_local = "Not saving summary dataframe locally"
 
-    s3_summary_df = wr.s3.read_csv(
-        [f"s3://reboot-motion-{s3_metadata.org_id}/population/s3_summary.csv"], index_col=[0]
-    )
+    if save_local:
+        try:
+            s3_summary_df = pd.read_csv("s3_summary.csv")
+            status_local = "Loaded local summary dataframe"
 
-    s3_summary_df['s3_path_delivery'] = s3_summary_df['s3_path_delivery'] + s3_metadata.file_type.value
+        except FileNotFoundError:
+            status_local = "Local summary dataframe not found"
+            pass
 
-    s3_summary_df['org_player_id'] = s3_summary_df['org_player_id'].astype('string')
+    if s3_summary_df is None:
+        s3_summary_df = wr.s3.read_csv(
+            [f"s3://reboot-motion-{s3_metadata.org_id}/population/s3_summary.csv"],
+            index_col=[0],
+        )
 
-    s3_summary_df['session_num'] = s3_summary_df['session_num'].astype('string')
+    if (
+        not s3_summary_df["s3_path_delivery"]
+        .iloc[0]
+        .endswith(s3_metadata.file_type.value)
+    ):
+        s3_summary_df["s3_path_delivery"] = (
+            s3_summary_df["s3_path_delivery"] + s3_metadata.file_type.value
+        )
 
-    s3_summary_df['session_date'] = pd.to_datetime(s3_summary_df['session_date'])
+    s3_summary_df["org_player_id"] = s3_summary_df["org_player_id"].astype("string")
 
-    s3_summary_df['org_session_id'] = s3_summary_df['org_session_id'].astype('string')
+    s3_summary_df["session_num"] = s3_summary_df["session_num"].astype("string")
 
-    display_available_df_data(s3_summary_df)
+    s3_summary_df["session_date"] = pd.to_datetime(s3_summary_df["session_date"])
+
+    s3_summary_df["org_session_id"] = s3_summary_df["org_session_id"].astype("string")
+
+    if verbose:
+        if save_local:
+            print(status_local)
+        display_available_df_data(s3_summary_df)
+
+    if save_local:
+        s3_summary_df.to_csv("s3_summary.csv", index=False)
 
     return s3_summary_df
 
@@ -200,42 +282,51 @@ def add_to_mask(mask: pd.Series, df: pd.DataFrame, col: str, vals: list) -> pd.S
     return mask & df[col].isin(vals)
 
 
-def filter_s3_summary_df(player_metadata: PlayerMetadata, s3_df: pd.DataFrame) -> pd.DataFrame:
+def filter_s3_summary_df(
+    player_metadata: PlayerMetadata, s3_df: pd.DataFrame, verbose: bool = True
+) -> pd.DataFrame:
     """
     Filter the S3 summary dataframe for only rows that are associated with the input player metadata.
 
     :param player_metadata: the metadata to use to filter the dataframe
     :param s3_df: the s3 summary dataframe
+    :param verbose: whether to display available info from the dataframe
     :return: the filtered dataframe that only includes rows related to the player metadata
     """
 
-    mask = s3_df['mocap_type'].isin(player_metadata.s3_metadata.mocap_types) \
-        & (s3_df['movement_type'] == player_metadata.s3_metadata.movement_type)
+    mask = s3_df["mocap_type"].isin(player_metadata.s3_metadata.mocap_types) & (
+        s3_df["movement_type"] == player_metadata.s3_metadata.movement_type
+    )
 
     if player_metadata.org_player_ids:
-        mask = add_to_mask(mask, s3_df, 'org_player_id', player_metadata.org_player_ids)
+        mask = add_to_mask(mask, s3_df, "org_player_id", player_metadata.org_player_ids)
 
     if player_metadata.session_dates:
-        mask = add_to_mask(mask, s3_df, 'session_date', player_metadata.session_dates)
+        mask = add_to_mask(mask, s3_df, "session_date", player_metadata.session_dates)
 
     if player_metadata.session_nums:
         mask = mask & (
-                s3_df['session_num'].isin(player_metadata.session_nums)
-                | s3_df['org_session_id'].isin(player_metadata.session_nums)
+            s3_df["session_num"].isin(player_metadata.session_nums)
+            | s3_df["org_session_id"].isin(player_metadata.session_nums)
         )
 
     if player_metadata.session_date_start is not None:
-        mask = mask & (s3_df['session_date'] >= pd.Timestamp(player_metadata.session_date_start))
+        mask = mask & (
+            s3_df["session_date"] >= pd.Timestamp(player_metadata.session_date_start)
+        )
 
     if player_metadata.session_date_end is not None:
-        mask = mask & (s3_df['session_date'] <= pd.Timestamp(player_metadata.session_date_end))
+        mask = mask & (
+            s3_df["session_date"] <= pd.Timestamp(player_metadata.session_date_end)
+        )
 
     if player_metadata.year is not None:
-        mask = mask & (s3_df['year'] == player_metadata.year)
+        mask = mask & (s3_df["year"] == player_metadata.year)
 
     return_df = s3_df.loc[mask].drop_duplicates(ignore_index=True)
 
-    display_available_df_data(return_df)
+    if verbose:
+        display_available_df_data(return_df)
 
     return return_df
 
@@ -254,14 +345,14 @@ def list_available_s3_keys(org_id: str, df: pd.DataFrame) -> list[str]:
 
     all_files = []
 
-    for s3_path_delivery in df['s3_path_delivery']:
-        print('s3 base path:', s3_path_delivery)
+    for s3_path_delivery in df["s3_path_delivery"]:
+        print("s3 base path:", s3_path_delivery)
 
-        key_prefix = '/'.join(s3_path_delivery.split('s3://')[-1].split('/')[1:])
+        key_prefix = "/".join(s3_path_delivery.split("s3://")[-1].split("/")[1:])
         objs = s3_client.list_objects_v2(Bucket=bucket, Prefix=key_prefix)
 
-        s3_files = sorted([obj['Key'] for obj in objs.get('Contents', [])])
-        print('available s3 files:')
+        s3_files = sorted([obj["Key"] for obj in objs.get("Contents", [])])
+        print("available s3 files:")
         print(s3_files)
         print()
 
@@ -271,7 +362,10 @@ def list_available_s3_keys(org_id: str, df: pd.DataFrame) -> list[str]:
 
 
 def load_games_to_df_from_s3_paths(
-        game_paths: list[str], add_ik_joints: bool = False, add_elbow_var_val: bool = False
+    game_paths: list[str],
+    add_ik_joints: bool = False,
+    add_elbow_var_val: bool = False,
+    verbose: bool = True,
 ) -> pd.DataFrame:
     """
     For a list of paths to the S3 folder of data for each game, load the data into a pandas dataframe.
@@ -279,167 +373,227 @@ def load_games_to_df_from_s3_paths(
     :param game_paths: list of paths to folders with data for a player
     :param add_ik_joints: whether to add joints necessary to run analyses dependent on IK
     :param add_elbow_var_val: whether to add elbow varus valgus columns set to 0 degrees
+    :param verbose: whether to display status info as games are loading
     :return: dataframe of all data from all games
     """
     game_paths = sorted(list(set(game_paths)))
 
     all_games = []
+    game_count = 0
 
-    for i, game_path in enumerate(game_paths):
-
+    for game_path in game_paths:
         try:
-            if 'hitting-processed-series' in game_path:
+            if "hitting-processed-series" in game_path:
                 swing_filenames = wr.s3.list_objects(game_path)
                 swing_dfs = []
                 for swing_filename in swing_filenames:
-                    swing_df = wr.s3.read_csv(swing_filename, index_col=[0], use_threads=True).dropna(axis=1, how='all')
+                    swing_df = wr.s3.read_csv(
+                        swing_filename, index_col=[0], use_threads=True
+                    ).dropna(axis=1, how="all")
 
-                    basepath = os.path.join(*swing_filename.split('/')[1:-2])
+                    basepath = os.path.join(*swing_filename.split("/")[1:-2])
                     movement_id = os.path.basename(swing_filename)[:-8]
-                    org_movement_id = movement_id.split('_')[-1]
+                    org_movement_id = movement_id.split("_")[-1]
 
-                    if 'time' not in swing_df.columns:
-                        metrics_csv_filename = os.path.join('s3://',basepath,'hitting-processed-metrics',f'{movement_id}_bhm.csv')
+                    if "time" not in swing_df.columns:
+                        metrics_csv_filename = os.path.join(
+                            "s3://",
+                            basepath,
+                            "hitting-processed-metrics",
+                            f"{movement_id}_bhm.csv",
+                        )
                         metrics_df = wr.s3.read_csv(metrics_csv_filename)
-                        
-                        swing_df['time'] = (np.arange(swing_df.shape[0]) / 300).round(5)
-                        
-                        if not np.isnan(metrics_df.loc[0,'impact_event']):
-                            end_index = int(metrics_df.loc[0,'impact_event'])
+
+                        swing_df["time"] = (np.arange(swing_df.shape[0]) / 300).round(5)
+
+                        if not np.isnan(metrics_df.loc[0, "impact_event"]):
+                            end_index = int(metrics_df.loc[0, "impact_event"])
                         else:
-                            end_index = int(metrics_df.loc[0,'peak_velocity_event'])
-                            
-                        swing_df['time_from_swing_end'] = (swing_df['time'].values - swing_df['time'].values[end_index]).round(5)
-                        swing_df['rel_frame'] = (np.arange(swing_df.shape[0]) - end_index).astype(int)
-                            
-                        foot_down = int(metrics_df.loc[0,'foot_down_event'])
+                            end_index = int(metrics_df.loc[0, "peak_velocity_event"])
+
+                        swing_df["time_from_swing_end"] = (
+                            swing_df["time"].values - swing_df["time"].values[end_index]
+                        ).round(5)
+                        swing_df["rel_frame"] = (
+                            np.arange(swing_df.shape[0]) - end_index
+                        ).astype(int)
+
+                        foot_down = int(metrics_df.loc[0, "foot_down_event"])
                         norm_time_step = 100 / (end_index - foot_down)
-                        
-                        swing_df['norm_time'] = ((np.arange(swing_df.shape[0]) - foot_down) * norm_time_step).round(5)
-                        
-                        swing_df['org_movement_id'] = org_movement_id
-                        
+
+                        swing_df["norm_time"] = (
+                            (np.arange(swing_df.shape[0]) - foot_down) * norm_time_step
+                        ).round(5)
+
+                        swing_df["org_movement_id"] = org_movement_id
+
                     swing_dfs.append(swing_df)
-                    
+
                 current_game = pd.concat(swing_dfs)
 
-            elif 'hitting-processed-metrics' in game_path:
+            elif "hitting-processed-metrics" in game_path:
                 swing_filenames = wr.s3.list_objects(game_path)
-                current_game = wr.s3.read_csv(swing_filenames, use_threads=True).dropna(axis=1, how='all')
+                current_game = wr.s3.read_csv(swing_filenames, use_threads=True).dropna(
+                    axis=1, how="all"
+                )
 
-                if 'org_movement_id' not in current_game.columns:
-                    org_movement_ids = [os.path.basename(swing_filename).split('_')[1] for swing_filename in swing_filenames]
-                    current_game['org_movement_id'] = org_movement_ids
+                if "org_movement_id" not in current_game.columns:
+                    org_movement_ids = [
+                        os.path.basename(swing_filename).split("_")[1]
+                        for swing_filename in swing_filenames
+                    ]
+                    current_game["org_movement_id"] = org_movement_ids
 
             else:
-                if '/metrics-' in game_path and not game_path[-1].isdigit():
+                if "/metrics-" in game_path and not game_path[-1].isdigit():
                     try:
-                        print('Defaulting to v2 metrics')
+                        metrics_status = "Defaulting to v2 metrics"
                         current_game = wr.s3.read_csv(
                             f"{game_path}-v2-0-0", index_col=[0], use_threads=True
-                        ).dropna(axis=1, how='all')
+                        ).dropna(axis=1, how="all")
 
                     except wr.exceptions.NoFilesFound:
-                        print('No v2 metrics found, falling back to v1 metrics')
+                        metrics_status = (
+                            "No v2 metrics found, falling back to v1 metrics"
+                        )
                         current_game = wr.s3.read_csv(
                             f"{game_path}-v1-0-0", index_col=[0], use_threads=True
-                        ).dropna(axis=1, how='all')
-                else:
-                    current_game = wr.s3.read_csv(game_path, index_col=[0], use_threads=True).dropna(axis=1, how='all')
+                        ).dropna(axis=1, how="all")
 
-            supported_mocap_types = ['hawkeye', 'hawkeyehfr']
+                    if verbose:
+                        print(metrics_status)
+
+                else:
+                    current_game = wr.s3.read_csv(
+                        game_path, index_col=[0], use_threads=True
+                    ).dropna(axis=1, how="all")
+
+            supported_mocap_types = ["hawkeye", "hawkeyehfr"]
 
             session_date_idx_list = [
-                i for i, s in enumerate(game_path.split('/')) if s.isnumeric() and (len(s) == 8)
+                i
+                for i, s in enumerate(game_path.split("/"))
+                if s.isnumeric() and (len(s) == 8)
             ]
-            session_date_str = game_path.split('/')[session_date_idx_list[0]]
-            current_game['session_date'] = pd.to_datetime(session_date_str)
-            print('session_date:', current_game['session_date'].iloc[0])
+            session_date_str = game_path.split("/")[session_date_idx_list[0]]
+            current_game["session_date"] = pd.to_datetime(session_date_str)
 
             used_words = set(supported_mocap_types + [session_date_str])
             session_num_idx_list = [
-                i for i, s in enumerate(game_path.split('/'))
-                if s.isalnum() and s not in used_words and ((len(s) == 1) or (len(s) == 6) or (len(s) == 8))
+                i
+                for i, s in enumerate(game_path.split("/"))
+                if s.isalnum()
+                and s not in used_words
+                and ((len(s) == 1) or (len(s) == 6) or (len(s) == 8))
             ]
             if 0 < len(session_num_idx_list) <= 2:
-                current_game['session_num'] = game_path.split('/')[session_num_idx_list[0]]
+                current_game["session_num"] = game_path.split("/")[
+                    session_num_idx_list[0]
+                ]
 
             else:
-                current_game['session_num'] = None
-            print('session_num:', current_game['session_num'].iloc[0])
+                current_game["session_num"] = None
 
-            mocap_type_list = [s for s in game_path.split('/') if any(mt in s for mt in supported_mocap_types)]
+            mocap_type_list = [
+                s
+                for s in game_path.split("/")
+                if any(mt in s for mt in supported_mocap_types)
+            ]
             if mocap_type_list:
-                current_game['mocap_type'] = mocap_type_list[0]
+                current_game["mocap_type"] = mocap_type_list[0]
 
             else:
-                current_game['mocap_type'] = None
-            print('mocap_type:', current_game['mocap_type'].iloc[0])
+                current_game["mocap_type"] = None
 
             if add_ik_joints:
-                if 'time' in current_game.columns:
-                    for coord in ('X', 'Y', 'Z'):
+                if "time" in current_game.columns:
+                    for coord in ("X", "Y", "Z"):
+                        current_game[f"neck_{coord}"] = (
+                            current_game[f"LSJC_{coord}"]
+                            + current_game[f"RSJC_{coord}"]
+                        ) / 2.0
 
-                        current_game[f'neck_{coord}'] = (current_game[f'LSJC_{coord}'] + current_game[f'RSJC_{coord}']) / 2.
+                        current_game[f"pelvis_{coord}"] = (
+                            current_game[f"LHJC_{coord}"]
+                            + current_game[f"RHJC_{coord}"]
+                        ) / 2.0
 
-                        current_game[f'pelvis_{coord}'] = (current_game[f'LHJC_{coord}'] + current_game[f'RHJC_{coord}']) / 2.
+                        current_game[f"torso_{coord}"] = current_game[f"pelvis_{coord}"]
 
-                        current_game[f'torso_{coord}'] = current_game[f'pelvis_{coord}']
+                        current_game[f"{coord.lower()}_translation"] = current_game[
+                            f"pelvis_{coord}"
+                        ]
 
-                        current_game[f'{coord.lower()}_translation'] = current_game[f'pelvis_{coord}']
-
-                    if 'Basketball_X' in current_game.columns:
+                    if "Basketball_X" in current_game.columns:
                         current_game = current_game.rename(
                             columns={
-                                'Basketball_X': 'x_ball_translation',
-                                'Basketball_Y': 'y_ball_translation',
-                                'Basketball_Z': 'z_ball_translation'
+                                "Basketball_X": "x_ball_translation",
+                                "Basketball_Y": "y_ball_translation",
+                                "Basketball_Z": "z_ball_translation",
                             }
                         )
 
                     # set the target joint angle for the elbow varus valgus degree of freedom
                     if add_elbow_var_val:
-                        current_game['right_elbow_var'] = 0
+                        current_game["right_elbow_var"] = 0
 
-                        current_game['left_elbow_var'] = 0
+                        current_game["left_elbow_var"] = 0
 
-                    print('Added IK joints')
+                    ik_status = "Added IK joints"
 
                 else:
-                    print('Attempted to add IK joints, but they cannot be added to dataframes without time')
+                    ik_status = "Attempted to add IK joints, but they cannot be added to dataframes without time"
+
+                if verbose:
+                    print(ik_status)
 
             all_games.append(current_game)
+            game_count += 1
 
-            print('Loaded path:', game_path, '-', i + 1, 'out of', len(game_paths))
+            if verbose:
+                print("session_date:", current_game["session_date"].iloc[0])
+                print("session_num:", current_game["session_num"].iloc[0])
+                print(
+                    "Loaded path:",
+                    game_path,
+                    "-",
+                    game_count,
+                    "out of",
+                    len(game_paths),
+                )
+                print()
 
         except Exception as exc:
-            print('Error reading path', game_path, exc)
+            print("Error reading path:", game_path)
+            print("With exception:", exc)
             continue
 
     all_games_df = pd.concat(all_games).reset_index(drop=True)
 
-    if (
-            ('rel_frame' not in all_games_df.columns)
-            and (('time_from_max_hand' in all_games_df.columns) or ('time_from_max_height' in all_games_df.columns))
+    time_cols = ("time_from_max_hand", "time_from_max_height")
+
+    if ("rel_frame" not in all_games_df.columns) and any(
+        tc in all_games_df.columns for tc in time_cols
     ):
-        print('Creating relative frame column...')
+        time_col = next(tc for tc in time_cols if tc in all_games_df.columns)
 
-        time_col = 'time_from_max_hand' if 'time_from_max_hand' in all_games_df.columns else 'time_from_max_height'
+        all_games_df["rel_frame"] = all_games_df[time_col].copy()
+        all_games_df["rel_frame"] = all_games_df.groupby("org_movement_id")[
+            "rel_frame"
+        ].transform(get_relative_frame)
 
-        all_games_df['rel_frame'] = all_games_df[time_col].copy()
-        all_games_df['rel_frame'] = all_games_df.groupby('org_movement_id')['rel_frame'].transform(get_relative_frame)
-
-        print('Done!')
+        if verbose:
+            print("Created relative frame column")
 
     return all_games_df
 
 
 def load_data_into_analysis_dict(
-        player_metadata: PlayerMetadata,
-        df: Optional[pd.DataFrame] = None,
-        df_mean: Optional[pd.DataFrame] = None,
-        df_std: Optional[pd.DataFrame] = None,
-        segment_label: Optional[str] = None
+    player_metadata: PlayerMetadata,
+    df: Optional[pd.DataFrame] = None,
+    df_mean: Optional[pd.DataFrame] = None,
+    df_std: Optional[pd.DataFrame] = None,
+    segment_label: Optional[str] = None,
 ) -> dict:
     """
     Load data from multiple games in a summary dict for further analysis.
@@ -451,49 +605,64 @@ def load_data_into_analysis_dict(
     :param segment_label: the desired label to use for the analysis segment
     :return: dict of data to be used for this segment of an analysis
     """
-    print('Loading into dict player metadata:', player_metadata)
+    print("Loading into dict player metadata:", player_metadata)
 
     analysis_dict = {
-        'player_id': player_metadata.org_player_ids[0] if player_metadata.org_player_ids else None,
-        'session_date': player_metadata.session_dates[0] if player_metadata.session_dates else None,
-        'game_pk': player_metadata.session_nums[0] if player_metadata.session_nums else None,
-        'play_guid': player_metadata.org_movement_id,
-        's3_prefix': player_metadata.s3_prefix,
-        'eye_hand_multiplier': player_metadata.s3_metadata.handedness.eye_hand_multiplier,
-        'segment_label': segment_label
+        "player_id": player_metadata.org_player_ids[0]
+        if player_metadata.org_player_ids
+        else None,
+        "session_date": player_metadata.session_dates[0]
+        if player_metadata.session_dates
+        else None,
+        "game_pk": player_metadata.session_nums[0]
+        if player_metadata.session_nums
+        else None,
+        "play_guid": player_metadata.org_movement_id,
+        "s3_prefix": player_metadata.s3_prefix,
+        "eye_hand_multiplier": player_metadata.s3_metadata.handedness.eye_hand_multiplier,
+        "segment_label": segment_label,
     }
 
     if df is None:
-        print('No df provided, downloading data using s3 prefix:', analysis_dict['s3_prefix'])
-        df = wr.s3.read_csv(analysis_dict['s3_prefix'], index_col=[0])
+        print(
+            "No df provided, downloading data using s3 prefix:",
+            analysis_dict["s3_prefix"],
+        )
+        df = wr.s3.read_csv(analysis_dict["s3_prefix"], index_col=[0])
 
     if df_mean is None:
-        analysis_dict['df_mean'] = df.groupby('rel_frame').agg('mean', numeric_only=True).reset_index()
-        print('Aggregated mean from df')
+        analysis_dict["df_mean"] = (
+            df.groupby("rel_frame").agg("mean", numeric_only=True).reset_index()
+        )
+        print("Aggregated mean from df")
 
     else:
-        analysis_dict['df_mean'] = df_mean
+        analysis_dict["df_mean"] = df_mean
 
     if df_std is None:
-        analysis_dict['df_std'] = df.groupby('rel_frame').agg('std', numeric_only=True).reset_index()
-        print('Aggregated std from df')
+        analysis_dict["df_std"] = (
+            df.groupby("rel_frame").agg("std", numeric_only=True).reset_index()
+        )
+        print("Aggregated std from df")
 
     else:
-        analysis_dict['df_std'] = df_std
+        analysis_dict["df_std"] = df_std
 
-    if analysis_dict['play_guid'] is None:
-        play_guid = list(df['org_movement_id'].unique())[0]
-        analysis_dict['play_guid'] = play_guid
+    if analysis_dict["play_guid"] is None:
+        play_guid = list(df["org_movement_id"].unique())[0]
+        analysis_dict["play_guid"] = play_guid
 
     else:
-        play_guid = analysis_dict['play_guid']
+        play_guid = analysis_dict["play_guid"]
 
-    analysis_dict['df'] = df.loc[df['org_movement_id'] == play_guid]
+    analysis_dict["df"] = df.loc[df["org_movement_id"] == play_guid]
 
     return analysis_dict
 
 
-def merge_data_df_with_s3_keys(data_df: pd.DataFrame, s3_keys: list[str]) -> pd.DataFrame:
+def merge_data_df_with_s3_keys(
+    data_df: pd.DataFrame, s3_keys: list[str]
+) -> pd.DataFrame:
     """
     Add a column to a data df with the associated s3 key.
 
@@ -504,19 +673,20 @@ def merge_data_df_with_s3_keys(data_df: pd.DataFrame, s3_keys: list[str]) -> pd.
 
     id_path_df = pd.DataFrame(
         {
-            'movement_num': key.split('/')[-1].split('_')[0],
-            'org_movement_id': key.split('/')[-1].split('_')[1],
-            's3_key': key,
-        } for key in s3_keys
+            "movement_num": key.split("/")[-1].split("_")[0],
+            "org_movement_id": key.split("/")[-1].split("_")[1],
+            "s3_key": key,
+        }
+        for key in s3_keys
     )
 
-    id_path_df['movement_num'] = id_path_df['movement_num'].astype(int)
+    id_path_df["movement_num"] = id_path_df["movement_num"].astype(int)
 
     data_df = data_df.merge(
-        id_path_df, left_on='org_movement_id', right_on='org_movement_id', how='left'
-    ).sort_values(by=['session_date', 'session_num', 'movement_num'], ignore_index=True)
+        id_path_df, left_on="org_movement_id", right_on="org_movement_id", how="left"
+    ).sort_values(by=["session_date", "session_num", "movement_num"], ignore_index=True)
 
-    data_df['count'] = data_df.groupby(['session_date', 'session_num']).cumcount() + 1
+    data_df["count"] = data_df.groupby(["session_date", "session_num"]).cumcount() + 1
 
     return data_df
 
@@ -524,13 +694,13 @@ def merge_data_df_with_s3_keys(data_df: pd.DataFrame, s3_keys: list[str]) -> pd.
 def list_chunks(lst: list, n: int) -> Generator[list, None, None]:
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
-        yield lst[i: i + n]
+        yield lst[i : i + n]
 
 
 def get_relative_frame(time_series: pd.Series) -> pd.Series:
     """Input a pandas series of floats, and return ranks with 0 as rank = 0 and negative numbers as negative ranks."""
     all_ranks = (
-            time_series.where(time_series >= 0).rank(method="first") - 1
+        time_series.where(time_series >= 0).rank(method="first") - 1
     )  # start at 0 instead of 1
     negative_ranks = time_series.where(time_series < 0).rank(
         method="first", ascending=False
@@ -551,7 +721,7 @@ def get_available_joint_angles(analysis_dicts: list[dict]) -> list[str]:
         "rel_frame",
         "game_pk",
         "session_num",
-        "session_date"
+        "session_date",
     )
 
     df_columns = list(analysis_dicts[0]["df"])
@@ -567,11 +737,11 @@ def get_available_joint_angles(analysis_dicts: list[dict]) -> list[str]:
 
 
 def filter_pop_df(
-        mean_df: pd.DataFrame,
-        std_df: pd.DataFrame,
-        time_col: str,
-        angle_cols: list[str],
-        downsample: int = 1,
+    mean_df: pd.DataFrame,
+    std_df: pd.DataFrame,
+    time_col: str,
+    angle_cols: list[str],
+    downsample: int = 1,
 ) -> pd.DataFrame:
     """
     Filter a population dataframe and combine the mean and std dataframes.
@@ -584,7 +754,8 @@ def filter_pop_df(
     :return: the filtered and down-sampled population dataframe
     """
 
-    assert len(mean_df) == len(std_df), "Mismatched frames between mean and std population data"
+    if len(mean_df) != len(std_df):
+        raise IndexError("Mismatched frames between mean and std population data")
 
     df = mean_df[[time_col, *angle_cols]].copy()
 
@@ -597,12 +768,12 @@ def filter_pop_df(
 
 
 def filter_analysis_dicts(
-        analysis_dicts: list[dict],
-        time_col: str,
-        angle_cols: list[str],
-        keep_df: bool = True,
-        keep_df_mean: bool = True,
-        downsample: int = 1,
+    analysis_dicts: list[dict],
+    time_col: str,
+    angle_cols: list[str],
+    keep_df: bool = True,
+    keep_df_mean: bool = True,
+    downsample: int = 1,
 ) -> list[dict]:
     """
     Filter an analysis dict so that it is a smaller size for sending to AWS for analysis.
@@ -655,7 +826,6 @@ def filter_analysis_dicts(
     res = []
 
     for analysis_dict in analysis_dicts:
-
         filt_analysis_dict = {
             k: v for k, v in analysis_dict.items() if k in keys_to_keep
         }
@@ -682,15 +852,15 @@ def filter_analysis_dicts(
 
 
 def get_animation(
-        session: boto3.Session,
-        analysis_dicts: list[dict],
-        pop_mean_df: pd.DataFrame,
-        pop_std_df: pd.DataFrame,
-        time_column: str,
-        joint_angle: str,
-        plot_joint_angle_mean: bool,
-        frame_step: int = 25,
-        downsample_data: int = 2,
+    session: boto3.Session,
+    analysis_dicts: list[dict],
+    pop_mean_df: pd.DataFrame,
+    pop_std_df: pd.DataFrame,
+    time_column: str,
+    joint_angle: str,
+    plot_joint_angle_mean: bool,
+    frame_step: int = 25,
+    downsample_data: int = 2,
 ) -> go.Figure:
     """
     Use the input data to retrieve the synchronized skeleton and joint angle animation from AWS.
@@ -731,30 +901,30 @@ def get_animation(
         "times": times,
         "time_column": time_column,
         "joint_angle": joint_angle,
-        "eye_hand_multiplier": analysis_dicts[0]['eye_hand_multiplier'],
+        "eye_hand_multiplier": analysis_dicts[0]["eye_hand_multiplier"],
         "plot_joint_angle_mean": plot_joint_angle_mean,
     }
 
     payload = {"function_name": "get_joint_angle_animation", "args": args}
 
-    return plotly.io.from_json(ut.handle_lambda_invocation(session, payload))
+    return plotly.io.from_json(handle_lambda_invocation(session, payload))
 
 
 def get_joint_plot(
-        session: boto3.Session,
-        analysis_dicts: list[dict],
-        pop_mean_df: pd.DataFrame,
-        pop_std_df: pd.DataFrame,
-        time_column: str,
-        joint_angles: list[str],
-        plot_colors: list[str] = (
-            "rgb(31, 119, 180)",
-            "rgb(255, 127, 14)",
-            "rgb(44, 160, 44)",
-            "rgb(214, 39, 40)",
-            "rgb(148, 103, 189)",
-        ),
-        downsample_data: int = 2,
+    session: boto3.Session,
+    analysis_dicts: list[dict],
+    pop_mean_df: pd.DataFrame,
+    pop_std_df: pd.DataFrame,
+    time_column: str,
+    joint_angles: list[str],
+    plot_colors: list[str] = (
+        "rgb(31, 119, 180)",
+        "rgb(255, 127, 14)",
+        "rgb(44, 160, 44)",
+        "rgb(214, 39, 40)",
+        "rgb(148, 103, 189)",
+    ),
+    downsample_data: int = 2,
 ) -> go.Figure:
     """
     Plot a selection of joint angles on a plotly 2d scatter plot.
@@ -796,12 +966,12 @@ def get_joint_plot(
 
     payload = {"function_name": "get_joint_angle_plots", "args": args}
 
-    return plotly.io.from_json(ut.handle_lambda_invocation(session, payload))
+    return plotly.io.from_json(handle_lambda_invocation(session, payload))
 
 
 def save_figs_to_html(
-        figs: list[plotly.graph_objects.Figure],
-        output_report_name: str = "report.html",
+    figs: list[plotly.graph_objects.Figure],
+    output_report_name: str = "report.html",
 ) -> None:
     """
     Save a list of plotly figures to an html report.
@@ -838,11 +1008,9 @@ def save_figs_to_html(
     )
 
     with open(output_report_name, "a+") as f:
-
         f.write(html_header)
 
         for fig in figs:
-
             if fig is None:
                 continue
 
@@ -862,42 +1030,105 @@ def save_figs_to_html(
     )
 
 
-# def main():
-#     """Demo main script for testing"""
-#     from utils import setup_aws
-#     from datatypes import S3Metadata, MocapType, MovementType, Handedness, FileType, PlayerMetadata
-#
-#     setup_aws()
-#     mocap_types = [MocapType.HAWKEYE_HFR, MocapType.HAWKEYE]
-#     movement_type = MovementType.BASEBALL_HITTING
-#     handedness = Handedness.LEFT
-#     file_type = FileType.INVERSE_KINEMATICS
-#
-#     s3_metadata = S3Metadata(
-#         org_id=os.environ['ORG_ID'],
-#         mocap_types=mocap_types,
-#         movement_type=movement_type,
-#         handedness=handedness,
-#         file_type=file_type,
-#     )
-#
-#     s3_df = download_s3_summary_df(s3_metadata)
-#
-#     primary_analysis_segment = PlayerMetadata(
-#         org_player_ids=None,
-#         session_dates=None,
-#         session_nums=None,
-#         session_date_start=None,
-#         session_date_end=None,
-#         year=2023,
-#         org_movement_id=None,
-#         s3_metadata=s3_metadata,
-#     )
-#
-#     primary_segment_summary_df = filter_s3_summary_df(primary_analysis_segment, s3_df)
-#
-#     load_games_to_df_from_s3_paths(primary_segment_summary_df['s3_path_delivery'].tolist())
-#
-#
-# if __name__ == "__main__":
-#     main()
+def export_data(
+    reboot_client: RebootClient,
+    org_player_id: str,
+    movement_type_enum: MovementType,
+    data_type_enum: DataType,
+    session_ids: list[str],
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """
+    Export data using the Reboot API.
+
+    :param reboot_client: RebootClient object
+    :param org_player_id: the org player ID to download data for
+    :param movement_type_enum: the movement type enum to download data for
+    :param data_type_enum: the data type enum to download
+    :param session_ids: list of session IDs to download
+    :param verbose: whether to print progress
+    :return: dataframe of returned data
+    """
+    data_format = "parquet"
+    aggregate = True
+    return_column_info = False
+    return_data = True
+    as_pyarrow = True
+    use_threads = False
+
+    with ThreadPoolExecutor() as executor:
+        pyarrow_tables = list(
+            tqdm(
+                executor.map(
+                    reboot_client.data_exports.create,
+                    session_ids,
+                    repeat(MOVEMENT_TYPE_IDS_MAP[movement_type_enum.value]),
+                    repeat(org_player_id),
+                    repeat(data_type_enum.value),
+                    repeat(data_format),
+                    repeat(aggregate),
+                    repeat(return_column_info),
+                    repeat(return_data),
+                    repeat(as_pyarrow),
+                    repeat(use_threads),
+                ),
+                total=len(session_ids),
+                disable=not verbose,
+            )
+        )
+
+    return pa.concat_tables(pyarrow_tables).to_pandas()
+
+
+def add_offsets_from_metadata(
+    data_df: pd.DataFrame, metadata_df: pd.DataFrame, movement_type_enum: MovementType
+) -> pd.DataFrame:
+    """
+    Add the X, Y, and Z offsets from the metadata to the position columns of an existing dataframe.
+
+    :param data_df: the data for adding the offsets
+    :param metadata_df: the dataframe containing the offsets
+    :param movement_type_enum: the movement type enum
+    :return: the dataframe with the added offsets
+    """
+    accepted_movement_types = {"baseball-hitting"}
+
+    if movement_type_enum.value not in accepted_movement_types:
+        raise NotImplementedError(
+            "Adding offsets only implemented for movement types: {}, others coming soon!".format(
+                accepted_movement_types
+            )
+        )
+
+    if not set(data_df["org_movement_id"]).issubset(
+        set(metadata_df["org_movement_id"])
+    ):
+        raise IndexError(
+            "All org movement ids in data_df must be found in metadata_df, "
+            "but some were not found: "
+            f"{list(set(data_df['org_movement_id']).difference(set(metadata_df['org_movement_id'])))}"
+        )
+
+    base_cols = list(data_df)
+
+    offset_cols = [
+        "X_offset",
+        "Y_offset",
+        "Z_offset",
+    ]
+
+    data_df = data_df.merge(
+        metadata_df[["org_movement_id"] + offset_cols], on="org_movement_id", how="left"
+    )
+
+    for coord in ("X", "Y", "Z"):
+        coord_cols = [c for c in base_cols if c.endswith(f"_{coord}")]
+
+        data_df[coord_cols] = data_df[coord_cols].to_numpy() + np.tile(
+            np.expand_dims(data_df[f"{coord}_offset"].to_numpy(), 1),
+            (1, len(coord_cols)),
+        )
+
+    data_df.drop(columns=offset_cols, inplace=True)
+
+    return data_df
