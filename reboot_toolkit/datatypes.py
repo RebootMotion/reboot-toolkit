@@ -6,12 +6,18 @@ from typing import Optional
 class MocapType(str, Enum):
     HAWKEYE = "hawkeye"
     HAWKEYE_HFR = "hawkeyehfr"
+    REBOOT_MOTION = "rebootmotion"
 
 
 class MovementType(str, Enum):
     BASEBALL_PITCHING = "baseball-pitching"
     BASEBALL_HITTING = "baseball-hitting"
     BASKETBALL_SHOOTING = "basketball-shooting"
+    VERTICAL_JUMPING = 'vertical-jumping'
+    SQUATTING = 'squatting'
+    LUNGING = 'lunging'
+    LEG_RAISING = 'leg-raising'
+
 
 
 MOVEMENT_TYPE_IDS_MAP = {
@@ -24,6 +30,7 @@ MOVEMENT_TYPE_IDS_MAP = {
 class Handedness(str, Enum):
     RIGHT = "right"
     LEFT = "left"
+    NONE = "none"
 
     @property
     def eye_hand_multiplier(self) -> int:
