@@ -73,7 +73,7 @@ def scale_human_xml(
     :return: the scaled MuJoCo XML model string
     """
     if boto3_session is None:
-        raise ValueError("Please input a boto3 session")
+        boto3_session = boto3.session.Session()
 
     args = {
         "bone_length_dict": get_bone_lengths(ik_df),
@@ -142,7 +142,9 @@ def reorder_joint_angle_df_like_model(
     return ik_df[name_order]
 
 
-def inverse_dynamics(mj_model, mj_joint_names, joint_angle_df, dom_hand, col_suffix="invdyn"):
+def inverse_dynamics(
+    mj_model, mj_joint_names, joint_angle_df, dom_hand, col_suffix="invdyn"
+):
 
     mj_data = mujoco.MjData(mj_model)
 
@@ -185,3 +187,26 @@ def inverse_dynamics(mj_model, mj_joint_names, joint_angle_df, dom_hand, col_suf
     return pd.DataFrame(
         data=sim_results, columns=[f"{jn}_{col_suffix}" for jn in mj_joint_names]
     )
+
+
+def inverse_dynamics_for_player(player_df, movement_type, player_mass, dom_hand):
+    model_xml_str = scale_human_xml(
+        player_df,
+        player_mass,
+        movement_type,
+        verbose=False,
+    )
+
+    model = mujoco.MjModel.from_xml_string(model_xml_str)
+    joint_names = get_model_info(model_xml_str, "joint", return_names=True)
+
+    inv_dyn_dfs = []
+
+    for org_movement_id, org_movement_df in player_df.groupby("org_movement_id"):
+        id_df = inverse_dynamics(
+            model, joint_names, org_movement_df.reset_index(drop=True), dom_hand
+        )
+        id_df["org_movement_id"] = org_movement_id
+        inv_dyn_dfs.append(id_df)
+
+    return pd.concat(inv_dyn_dfs).reset_index().rename(columns={"index": "frame"})

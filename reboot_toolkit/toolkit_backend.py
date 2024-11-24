@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import random
 
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
@@ -20,6 +21,7 @@ import pyarrow as pa
 from rapidfuzz import fuzz
 from tqdm import tqdm
 
+from .biomechanics import inverse_dynamics_for_player
 from .datatypes import (
     PlayerMetadata,
     S3Metadata,
@@ -30,6 +32,9 @@ from .datatypes import (
 from .inverse_kinematics import add_ik_cols
 from .reboot_motion_api import RebootClient
 from .utils import handle_lambda_invocation
+
+RANDOM_SEED = 1
+random.seed(RANDOM_SEED)
 
 
 def find_player_matches(
@@ -1130,3 +1135,176 @@ def add_offsets_from_metadata(
     data_df.drop(columns=offset_cols, inplace=True)
 
     return data_df
+
+
+def create_population_dataset(
+    s3_df,
+    movement_type,
+    session_dates_to_analyze=None,
+    org_player_ids_to_analyze=None,
+    count_sessions=2,
+    count_orgs_players=10,
+    count_movements=2,
+):
+    if session_dates_to_analyze is None:
+        session_dates_to_analyze = []
+
+    if org_player_ids_to_analyze is None:
+        org_player_ids_to_analyze = []
+
+    session_dates = list(
+        set(
+            list(random.sample(s3_df["session_date"].tolist(), count_sessions))
+            + [pd.to_datetime(sd) for sd in session_dates_to_analyze]
+        )
+    )
+
+    sample_df = s3_df.loc[
+        (s3_df["movement_type"] == movement_type)
+        & s3_df["session_date"].isin(session_dates)
+    ]
+
+    org_player_ids = sample_df["org_player_id"].tolist()
+    if len(org_player_ids) > count_orgs_players:
+        org_player_ids = random.sample(org_player_ids, count_orgs_players)
+
+    org_player_ids = list(set(org_player_ids + org_player_ids_to_analyze))
+
+    s3_df_orgs_players = sample_df.loc[sample_df["org_player_id"].isin(org_player_ids)]
+
+    all_dfs = []
+
+    for org_player_id, org_player_df in tqdm(
+        s3_df_orgs_players.groupby("org_player_id"),
+        desc="downloading player data:",
+        total=len(org_player_ids),
+    ):
+        player_session_paths = org_player_df["s3_path_delivery"].tolist()
+
+        player_mass = org_player_df["weight_lbs"].mean() * 0.453592
+
+        player_dfs = []
+
+        for player_session_path in player_session_paths:
+
+            session_ik_paths = wr.s3.list_objects(player_session_path)
+            if len(session_ik_paths) > count_movements:
+                session_ik_paths = random.sample(session_ik_paths, count_movements)
+
+            try:
+                ik_df = wr.s3.read_csv(session_ik_paths).rename(
+                    columns={"Unnamed: 0": "frame"}
+                )
+            except wr.exceptions.NoFilesFound:
+                continue
+            player_dfs.append(ik_df)
+
+        if not player_dfs:
+            continue
+
+        player_df = pd.concat(player_dfs)
+
+        add_ik_cols(
+            player_df,
+            add_translation=True,
+            add_elbow_var_val=True,
+        )
+
+        player_df["org_player_id"] = org_player_id
+
+        set_is_right_handed(player_df)
+
+        dom_hand = "r" if player_df["is_right_handed"].mean() > 0 else "l"
+
+        inv_dyn_df = inverse_dynamics_for_player(
+            player_df, movement_type, player_mass, dom_hand
+        )
+
+        player_df = player_df.merge(inv_dyn_df, on=["org_movement_id", "frame"]).dropna(
+            axis="columns", how="all"
+        )
+        all_dfs.append(player_df)
+
+    return pd.concat(all_dfs, ignore_index=True)
+
+
+def interpolate_df(df, time_vals):
+    return (
+        df.reindex(df.index.union(time_vals).unique())
+        .interpolate(method="cubic")
+        .loc[time_vals]
+    )
+
+
+def get_dom_hand_rename_dict(df, is_right_handed=None):
+    if is_right_handed is None:
+        is_right_handed = df["is_right_handed"].iloc[0]
+
+    if is_right_handed > 0:
+        dom = "right"
+        non_dom = "left"
+
+    else:
+        dom = "left"
+        non_dom = "right"
+
+    return {col: col.replace(dom, "dom") for col in list(df) if col.startswith(dom)} | {
+        col: col.replace(non_dom, "nondom")
+        for col in list(df)
+        if col.startswith(non_dom)
+    }
+
+
+def calculate_population_means(
+    population_df, col_suffixes_to_analyze, norm_time_range=None
+):
+
+    if not isinstance(col_suffixes_to_analyze, tuple):
+        col_suffixes_to_analyze = tuple(col_suffixes_to_analyze)
+
+    if norm_time_range is None:
+        norm_time_range = np.arange(-200, 120)
+
+    mean_dfs = []
+    std_dfs = []
+
+    for handedness, hand_df in population_df.groupby("is_right_handed"):
+
+        cols_to_analyze = [
+            c for c in hand_df.columns if c.endswith(col_suffixes_to_analyze)
+        ]
+
+        hand_df = hand_df[
+            ["norm_time", "org_player_id", "org_movement_id"] + cols_to_analyze
+        ].set_index("norm_time")
+
+        dom_hand_rename_dict = get_dom_hand_rename_dict(hand_df, handedness)
+
+        interped_df = (
+            hand_df.groupby(["org_player_id", "org_movement_id"])
+            .apply(interpolate_df, time_vals=norm_time_range, include_groups=False)
+            .reset_index()
+        )
+
+        mean_df = (
+            interped_df[["norm_time"] + cols_to_analyze]
+            .groupby("norm_time")
+            .mean()
+            .reset_index()
+            .rename(columns=dom_hand_rename_dict)
+        )
+        mean_dfs.append(mean_df)
+
+        std_df = (
+            interped_df[["norm_time"] + cols_to_analyze]
+            .groupby("norm_time")
+            .std()
+            .reset_index()
+            .rename(columns=dom_hand_rename_dict)
+        )
+        std_dfs.append(std_df)
+
+    return (
+        pd.concat(mean_dfs).groupby("norm_time").mean().reset_index(),
+        pd.concat(std_dfs).groupby("norm_time").mean().reset_index(),
+    )
