@@ -27,6 +27,7 @@ from .datatypes import (
     MovementType,
     DataType,
 )
+from .inverse_kinematics import add_ik_cols
 from .reboot_motion_api import RebootClient
 from .utils import handle_lambda_invocation
 
@@ -361,6 +362,27 @@ def list_available_s3_keys(org_id: str, df: pd.DataFrame) -> list[str]:
     return all_files
 
 
+def set_is_right_handed(df: pd.DataFrame):
+    """Create a column on a dataframe "is_right_handed", where +1 is right and -1 is left."""
+    df["left_minus_right"] = df["LAJC_Y"] - df["RAJC_Y"]
+
+    df["percent_stride"] = df["left_minus_right"].copy().abs()
+
+    df["percent_stride"] = df.groupby("org_movement_id")["percent_stride"].transform(
+        "rank", pct=True
+    )
+    df["percent_stride"] = np.where(df["percent_stride"] > 0.9, 1, np.nan)
+
+    df["left_minus_right"] = df["left_minus_right"] * df["percent_stride"]
+    df["left_minus_right"] = np.sign(
+        df.groupby("org_movement_id")["left_minus_right"].transform("median")
+    ).astype("Int64")
+
+    df.rename(columns={"left_minus_right": "is_right_handed"}, inplace=True)
+
+    df.drop(columns=["percent_stride"], inplace=True)
+
+
 def load_games_to_df_from_s3_paths(
     game_paths: list[str],
     add_ik_joints: bool = False,
@@ -507,37 +529,11 @@ def load_games_to_df_from_s3_paths(
 
             if add_ik_joints:
                 if "time" in current_game.columns:
-                    for coord in ("X", "Y", "Z"):
-                        current_game[f"neck_{coord}"] = (
-                            current_game[f"LSJC_{coord}"]
-                            + current_game[f"RSJC_{coord}"]
-                        ) / 2.0
-
-                        current_game[f"pelvis_{coord}"] = (
-                            current_game[f"LHJC_{coord}"]
-                            + current_game[f"RHJC_{coord}"]
-                        ) / 2.0
-
-                        current_game[f"torso_{coord}"] = current_game[f"pelvis_{coord}"]
-
-                        current_game[f"{coord.lower()}_translation"] = current_game[
-                            f"pelvis_{coord}"
-                        ]
-
-                    if "Basketball_X" in current_game.columns:
-                        current_game = current_game.rename(
-                            columns={
-                                "Basketball_X": "x_ball_translation",
-                                "Basketball_Y": "y_ball_translation",
-                                "Basketball_Z": "z_ball_translation",
-                            }
-                        )
-
-                    # set the target joint angle for the elbow varus valgus degree of freedom
-                    if add_elbow_var_val:
-                        current_game["right_elbow_var"] = 0
-
-                        current_game["left_elbow_var"] = 0
+                    add_ik_cols(
+                        current_game,
+                        add_translation=True,
+                        add_elbow_var_val=add_elbow_var_val,
+                    )
 
                     ik_status = "Added IK joints"
 
@@ -608,15 +604,17 @@ def load_data_into_analysis_dict(
     print("Loading into dict player metadata:", player_metadata)
 
     analysis_dict = {
-        "player_id": player_metadata.org_player_ids[0]
-        if player_metadata.org_player_ids
-        else None,
-        "session_date": player_metadata.session_dates[0]
-        if player_metadata.session_dates
-        else None,
-        "game_pk": player_metadata.session_nums[0]
-        if player_metadata.session_nums
-        else None,
+        "player_id": (
+            player_metadata.org_player_ids[0]
+            if player_metadata.org_player_ids
+            else None
+        ),
+        "session_date": (
+            player_metadata.session_dates[0] if player_metadata.session_dates else None
+        ),
+        "game_pk": (
+            player_metadata.session_nums[0] if player_metadata.session_nums else None
+        ),
         "play_guid": player_metadata.org_movement_id,
         "s3_prefix": player_metadata.s3_prefix,
         "eye_hand_multiplier": player_metadata.s3_metadata.handedness.eye_hand_multiplier,

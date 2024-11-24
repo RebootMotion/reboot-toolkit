@@ -144,18 +144,20 @@ def invoke_lambda_local(
     return mock_res
 
 
-def handle_lambda_invocation(session: boto3.Session, payload: dict) -> Union[str, dict]:
+def handle_lambda_invocation(session: boto3.Session, payload: dict, verbose: bool = True) -> Union[str, dict]:
     """
     Invoke a lambda function with the input payload.
 
     :param session: the boto3 session info to use
     :param payload: the lambda payload
+    :param verbose: whether to print status
     :return: the serialized lambda response
     """
 
     payload = json.dumps(payload, default=serialize)
 
-    print('Sending to AWS...')
+    if verbose:
+        print('Sending to AWS...')
     response = invoke_lambda(
         session=session,
         lambda_function_name=Functions.BACKEND,
@@ -163,7 +165,8 @@ def handle_lambda_invocation(session: boto3.Session, payload: dict) -> Union[str
         lambda_payload=payload,
     )
 
-    print('Reading Response...')
+    if verbose:
+        print('Reading Response...')
     payload = response["Payload"].read()
 
     if lambda_has_error(response):
@@ -171,5 +174,6 @@ def handle_lambda_invocation(session: boto3.Session, payload: dict) -> Union[str
         print(payload)
         return payload
 
-    print("Returning AWS Response...")
+    if verbose:
+        print("Returning AWS Response...")
     return json.loads(payload)
