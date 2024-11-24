@@ -31,6 +31,7 @@ from .toolkit_backend import (
     add_offsets_from_metadata,
     export_data,
     create_population_dataset,
+    get_dom_hand_rename_dict,
     calculate_population_means,
 )
 from .utils import setup_aws, decorate_primary_segment_df_with_stats_api
