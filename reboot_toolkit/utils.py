@@ -189,18 +189,3 @@ def handle_lambda_invocation(
     if verbose:
         print("Returning AWS Response...")
     return json.loads(payload)
-
-
-def get_rep_id(player_df, cols_to_analyze):
-    player_maxes = player_df.groupby("org_movement_id")[cols_to_analyze].max()
-    player_mins = player_df.groupby("org_movement_id")[cols_to_analyze].min()
-
-    return (
-        (
-            ((player_maxes - player_maxes.mean()) / player_maxes.std())
-            + ((player_mins - player_mins.mean()) / player_mins.std())
-        )
-        .sum(axis=1)
-        .abs()
-        .idxmin()
-    )

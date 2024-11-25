@@ -1256,7 +1256,7 @@ def get_dom_hand_rename_dict(df, is_right_handed=None):
 
 
 def calculate_population_means(
-    population_df, col_suffixes_to_analyze, norm_time_range=None
+    population_df, col_suffixes_to_analyze, norm_time_range=None, merge_mean_std=True
 ):
 
     if not isinstance(col_suffixes_to_analyze, tuple):
@@ -1304,7 +1304,42 @@ def calculate_population_means(
         )
         std_dfs.append(std_df)
 
+    mean_df = pd.concat(mean_dfs).groupby("norm_time").mean().reset_index()
+    std_df = pd.concat(std_dfs).groupby("norm_time").mean().reset_index()
+
+    if not merge_mean_std:
+        return mean_df, std_df
+
+    return mean_df.merge(std_df, on="norm_time", suffixes=("", "_std"))
+
+
+def get_rep_id(player_df, cols_to_analyze):
+    player_maxes = player_df.groupby("org_movement_id")[cols_to_analyze].max()
+    player_mins = player_df.groupby("org_movement_id")[cols_to_analyze].min()
+
     return (
-        pd.concat(mean_dfs).groupby("norm_time").mean().reset_index(),
-        pd.concat(std_dfs).groupby("norm_time").mean().reset_index(),
+        (
+            ((player_maxes - player_maxes.mean()) / player_maxes.std())
+            + ((player_mins - player_mins.mean()) / player_mins.std())
+        )
+        .sum(axis=1)
+        .abs()
+        .idxmin()
+    )
+
+def get_rep_df(player_df, cols_to_analyze, norm_time_min, norm_time_max):
+
+    rename_dict = get_dom_hand_rename_dict(player_df)
+
+    rep_org_movement_id = get_rep_id(player_df.rename(columns=rename_dict), cols_to_analyze)
+
+    return (
+        player_df.loc[
+            (player_df["org_movement_id"] == rep_org_movement_id)
+            & (player_df["norm_time"] >= norm_time_min)
+            & (player_df["norm_time"] <= norm_time_max)
+        ]
+        .reset_index(drop=True)
+        .rename(columns=rename_dict)
+        .copy()
     )

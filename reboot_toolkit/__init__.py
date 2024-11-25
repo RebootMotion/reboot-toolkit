@@ -31,10 +31,10 @@ from .toolkit_backend import (
     add_offsets_from_metadata,
     export_data,
     create_population_dataset,
-    get_dom_hand_rename_dict,
     calculate_population_means,
+    get_rep_df,
 )
-from .utils import setup_aws, decorate_primary_segment_df_with_stats_api, get_rep_id
+from .utils import setup_aws, decorate_primary_segment_df_with_stats_api
 from .biomechanics import (
     scale_human_xml,
     get_model_info,
