@@ -241,6 +241,7 @@ def get_joint_angle_animation(
     time_column: str,
     y_axis_label: str,
     animation_title: str,
+    frame_step: int = 2,
 ) -> go.Figure:
     """Input a list of analysis dicts and a list of time points at which to analyze them, and get a paired skeleton animation and joint angle plot."""
 
@@ -258,7 +259,7 @@ def get_joint_angle_animation(
         player_df[time_column].tolist()
         if pop_df is None
         else pop_df[time_column].tolist()
-    )
+    )[::frame_step]
 
     for i, t in enumerate(times):
         step = {
