@@ -49,6 +49,8 @@ def get_population_joint_angles(
 ):
     """Get upper and lower scatter plots, filled in between, showing the population range of a joint angle."""
 
+    pop_color_low_opac = f"rgba{pop_color[3:-1]}, 0.15)"
+
     x_population = pop_df[time_col]
 
     y_pop_lower = pop_df[angle_col] - pop_df[f"{angle_col}_std"]
@@ -57,25 +59,39 @@ def get_population_joint_angles(
     y_lower_trace = go.Scatter(
         x=x_population,
         y=y_pop_lower,
-        showlegend=False,
-        fill=None,
         mode="lines",
-        line=dict(color=pop_color, width=0.01),
+        line=dict(color=pop_color_low_opac, width=0.01),
+        name=f"{prefix} {angle_col}",
         visible=visible,
+        showlegend=False,
+        legendgroup=f"{prefix} {angle_col}",
     )
 
     y_upper_trace = go.Scatter(
         x=x_population,
         y=y_pop_upper,
-        name=f"{prefix} {angle_col}",
-        fill="tonexty",
-        fillcolor=pop_color,
         mode="lines",
-        line=dict(color=pop_color, width=0.01),
+        line=dict(color=pop_color_low_opac, width=0.01),
+        fill="tonexty",
+        fillcolor=pop_color_low_opac,
+        name=f"{prefix} {angle_col}",
         visible=visible,
+        showlegend=False,
+        legendgroup=f"{prefix} {angle_col}",
     )
 
-    return y_lower_trace, y_upper_trace
+    y_trace = go.Scatter(
+        x=x_population,
+        y=pop_df[angle_col],
+        mode="lines",
+        line=dict(color=pop_color.replace(", 0.15", ""), width=1, dash="dash"),
+        name=f"{prefix} {angle_col}",
+        visible=visible,
+        showlegend=True,
+        legendgroup=f"{prefix} {angle_col}",
+    )
+
+    return y_lower_trace, y_upper_trace, y_trace
 
 
 def get_joint_angle_plots(
@@ -88,23 +104,25 @@ def get_joint_angle_plots(
     vert_line_name: str = None,
 ):
     """Get all the listed joint angle plots overlaid, including population data."""
-    plot_colors_low_opac = [f"rgba{c[3:-1]}, 0.15)" for c in plot_colors]
     # line_styles = ["dashdot", "dot", "dash"]
     line_width = 2
 
     trace_data = []
     for ai, angle in enumerate(joint_angles):
         if pop_df is not None:
-            y_low_pop, y_up_pop = get_population_joint_angles(
-                pop_df, time_column, angle, plot_colors_low_opac[ai], "pop"
+            y_low, y_up, y = get_population_joint_angles(
+                pop_df, time_column, angle, plot_colors[ai], "pop"
             )
-            trace_data.extend([y_low_pop, y_up_pop])
 
-        if player_df is not None:
-            y_low_ply, y_up_ply = get_population_joint_angles(
-                player_df, time_column, angle, plot_colors_low_opac[ai], "player"
+        elif player_df is not None:
+            y_low, y_up, y = get_population_joint_angles(
+                player_df, time_column, angle, plot_colors[ai], "player"
             )
-            trace_data.extend([y_low_ply, y_up_ply])
+
+        else:
+            raise ValueError("one of pop_df or player_df must not be None")
+
+        trace_data.extend([y_low, y_up, y])
 
         trace_data.append(
             go.Scatter(
@@ -226,12 +244,10 @@ def get_joint_angle_animation(
 ) -> go.Figure:
     """Input a list of analysis dicts and a list of time points at which to analyze them, and get a paired skeleton animation and joint angle plot."""
 
-    joint_angle_title = f"Metrics"
-
     fig = make_subplots(
         rows=1,
         cols=2,
-        subplot_titles=[animation_title, joint_angle_title],
+        # subplot_titles=[animation_title, joint_angle_title],
         specs=[[{"type": "scene"}, {"type": "xy"}]],
     )
 
@@ -322,8 +338,8 @@ def get_joint_angle_animation(
             direction="left",
             xanchor="left",
             showactive=True,
-            x=0.05,
-            y=0.04,
+            x=0.15,
+            y=-0.03,
         )
     ]
 
@@ -335,14 +351,27 @@ def get_joint_angle_animation(
                 "visible": True,
             },
             "transition": {"duration": 100.0, "easing": "linear"},
-            "pad": {"t": 30, "b": 0},
+            "pad": {"t": 25, "b": 0},
             "steps": steps,
         }
     ]
 
     fig.update_layout(
+        title=animation_title,
         updatemenus=updatemenus,
         sliders=sliders,
+        scene1=go.layout.Scene(
+            camera=dict(
+                center=dict(x=0, y=0, z=0),
+                eye=dict(x=2, y=0, z=0),
+                up=dict(x=0, y=0, z=1),
+            ),
+            domain=dict(x=[0, 0.5], y=[0, 1.0]),
+            aspectmode="data",
+            xaxis=dict(showticklabels=False, title_text=""),
+            yaxis=dict(showticklabels=False, title_text=""),
+            zaxis=dict(showticklabels=False, title_text=""),
+        ),
     )
 
     fig.update_yaxes(
@@ -359,21 +388,6 @@ def get_joint_angle_animation(
         },
         row=1,
         col=2,
-    )
-
-    fig.update_layout(
-        scene1=go.layout.Scene(
-            camera=dict(
-                center=dict(x=0, y=0, z=0),
-                eye=dict(x=3, y=0, z=0),
-                up=dict(x=0, y=0, z=1),
-            ),
-            domain=dict(x=[0, 0.5], y=[0, 1.0]),
-            aspectmode="data",
-            xaxis=dict(showticklabels=False, title_text=""),
-            yaxis=dict(showticklabels=False, title_text=""),
-            zaxis=dict(showticklabels=False, title_text=""),
-        )
     )
 
     return fig
