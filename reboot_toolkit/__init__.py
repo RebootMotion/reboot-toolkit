@@ -34,11 +34,12 @@ from .toolkit_backend import (
     get_dom_hand_rename_dict,
     calculate_population_means,
 )
-from .utils import setup_aws, decorate_primary_segment_df_with_stats_api
+from .utils import setup_aws, decorate_primary_segment_df_with_stats_api, get_rep_id
 from .biomechanics import (
     scale_human_xml,
     get_model_info,
     reorder_joint_angle_df_like_model,
     inverse_dynamics,
 )
+from .visualize import get_joint_angle_animation
 from .reboot_motion_api import RebootClient
