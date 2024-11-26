@@ -24,7 +24,17 @@ logger = logging.getLogger(__name__)
 logger.setLevel(get_log_level())
 
 
-def add_ik_cols(ik_df, add_translation=False, add_elbow_var_val=False):
+def add_ik_cols(
+    ik_df: pd.DataFrame, add_translation: bool = False, add_elbow_var_val: bool = False
+) -> None:
+    """
+    Add columns needed for certain inverse kinematics calculations.
+
+    :param ik_df: the base df for adding columns
+    :param add_translation: whether to add translation columns
+    :param add_elbow_var_val: whether to add elbow var val columns
+    """
+
     for coord in ("X", "Y", "Z"):
         ik_df[f"neck_{coord}"] = (ik_df[f"LSJC_{coord}"] + ik_df[f"RSJC_{coord}"]) / 2.0
 

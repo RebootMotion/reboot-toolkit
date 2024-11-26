@@ -52,7 +52,6 @@ def setup_aws(verbose: bool = True) -> boto3.Session:
     if verbose:
         print("Org ID:")
         print(os.environ["ORG_ID"])
-        print()
         print("Current Boto3 Session:")
         print(boto3_session)
 

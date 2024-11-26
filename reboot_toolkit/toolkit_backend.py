@@ -33,9 +33,6 @@ from .inverse_kinematics import add_ik_cols
 from .reboot_motion_api import RebootClient
 from .utils import handle_lambda_invocation
 
-RANDOM_SEED = 1
-random.seed(RANDOM_SEED)
-
 
 def find_player_matches(
     s3_df: pd.DataFrame,
@@ -1137,26 +1134,61 @@ def add_offsets_from_metadata(
     return data_df
 
 
+def random_sample_with_desired_items(
+    full_list: list, desired_items_list: list, count_items: int
+) -> list:
+    """
+    Get a random sample form a list that includes the desired items.
+
+    :param full_list: the full list of items to sample from
+    :param desired_items_list: the items desired to be present in the final list
+    :param count_items: the max length of the final list
+    :return: the sampled list
+    """
+
+    desired_items = set(desired_items_list)
+
+    extra_items = set(full_list) - desired_items
+
+    if (len(extra_items) + len(desired_items)) > count_items:
+        return list(
+            random.sample(extra_items, count_items - len(desired_items))
+        ) + list(desired_items)
+
+    return list(extra_items) + list(desired_items)
+
+
 def create_population_dataset(
-    s3_df,
-    movement_type,
-    session_dates_to_analyze=None,
-    org_player_ids_to_analyze=None,
-    count_sessions=2,
-    count_orgs_players=10,
-    count_movements=2,
-):
+    s3_df: pd.DataFrame,
+    movement_type: str,
+    session_dates_to_analyze: list | None = None,
+    org_player_ids_to_analyze: list | None = None,
+    count_sessions: int = 3,
+    count_orgs_players: int = 9,
+    count_movements: int = 3,
+) -> pd.DataFrame:
+    """
+    Create a population dataset of inverse kinematics and inverse dynamics data from an s3 summary dataframe.
+
+    :param s3_df: the s3 summary dataframe
+    :param movement_type: the movement type to analyze
+    :param session_dates_to_analyze: optional list of session dates to analyze
+    :param org_player_ids_to_analyze: optional list of org player IDs to analyze
+    :param count_sessions: maximum number of sessions to analyze
+    :param count_orgs_players: maximum number of org players to analyze
+    :param count_movements: maximum number of movements to analyze
+    :return: dataframe of inverse kinematics and inverse dynamics data
+    """
     if session_dates_to_analyze is None:
         session_dates_to_analyze = []
 
     if org_player_ids_to_analyze is None:
         org_player_ids_to_analyze = []
 
-    session_dates = list(
-        set(
-            list(random.sample(s3_df["session_date"].tolist(), count_sessions))
-            + [pd.to_datetime(sd) for sd in session_dates_to_analyze]
-        )
+    session_dates = random_sample_with_desired_items(
+        s3_df["session_date"].tolist(),
+        [pd.to_datetime(sd) for sd in session_dates_to_analyze],
+        count_sessions,
     )
 
     sample_df = s3_df.loc[
@@ -1164,11 +1196,11 @@ def create_population_dataset(
         & s3_df["session_date"].isin(session_dates)
     ]
 
-    org_player_ids = sample_df["org_player_id"].tolist()
-    if len(org_player_ids) > count_orgs_players:
-        org_player_ids = random.sample(org_player_ids, count_orgs_players)
-
-    org_player_ids = list(set(org_player_ids + org_player_ids_to_analyze))
+    org_player_ids = random_sample_with_desired_items(
+        sample_df["org_player_id"].tolist(),
+        org_player_ids_to_analyze,
+        count_orgs_players,
+    )
 
     s3_df_orgs_players = sample_df.loc[sample_df["org_player_id"].isin(org_player_ids)]
 
@@ -1181,7 +1213,7 @@ def create_population_dataset(
     ):
         player_session_paths = org_player_df["s3_path_delivery"].tolist()
 
-        player_mass = org_player_df["weight_lbs"].mean() * 0.453592
+        player_mass = org_player_df["weight_lbs"].mean() * 0.453592  # lbs to kgs
 
         player_dfs = []
 
@@ -1228,15 +1260,22 @@ def create_population_dataset(
     return pd.concat(all_dfs, ignore_index=True)
 
 
-def interpolate_df(df, time_vals):
+def interpolate_df(
+    df: pd.DataFrame, time_vals: list, method: str = "cubic"
+) -> pd.DataFrame:
+    """Interpolate all the columns of a dataframe with the x values as the index, at the input time values"""
     return (
         df.reindex(df.index.union(time_vals).unique())
-        .interpolate(method="cubic")
+        .interpolate(method=method)
         .loc[time_vals]
     )
 
 
-def get_dom_hand_rename_dict(df, is_right_handed=None):
+def get_dom_hand_rename_dict(
+    df: pd.DataFrame, is_right_handed: int | None = None
+) -> dict:
+    """Get a dict that maps right and left column prefixes to dom and nondom"""
+
     if is_right_handed is None:
         is_right_handed = df["is_right_handed"].iloc[0]
 
@@ -1256,9 +1295,20 @@ def get_dom_hand_rename_dict(df, is_right_handed=None):
 
 
 def calculate_population_means(
-    population_df, col_suffixes_to_analyze, norm_time_range=None, merge_mean_std=True
-):
+    population_df: pd.DataFrame,
+    col_suffixes_to_analyze: list | tuple,
+    norm_time_range: np.ndarray | None = None,
+    merge_mean_std: bool = True,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Calculate population means and standard deviations.
 
+    :param population_df: the dataframe for calculating population means and standard deviations
+    :param col_suffixes_to_analyze: column suffixes to analyze
+    :param norm_time_range: optional norm time range
+    :param merge_mean_std: return one merged dataframe of means and standard deviations or two dataframes
+    :return:
+    """
     if not isinstance(col_suffixes_to_analyze, tuple):
         col_suffixes_to_analyze = tuple(col_suffixes_to_analyze)
 
@@ -1313,7 +1363,9 @@ def calculate_population_means(
     return mean_df.merge(std_df, on="norm_time", suffixes=("", "_std"))
 
 
-def get_rep_id(player_df, cols_to_analyze):
+def get_rep_id(player_df: pd.DataFrame, cols_to_analyze: list) -> str:
+    """Get a representative org movement ID from a dataframe by finding the ID closes to the maxes and mins."""
+
     player_maxes = player_df.groupby("org_movement_id")[cols_to_analyze].max()
     player_mins = player_df.groupby("org_movement_id")[cols_to_analyze].min()
 
@@ -1327,11 +1379,15 @@ def get_rep_id(player_df, cols_to_analyze):
         .idxmin()
     )
 
+
 def get_rep_df(player_df, cols_to_analyze, norm_time_min, norm_time_max):
+    """Get the representative dataframe."""
 
     rename_dict = get_dom_hand_rename_dict(player_df)
 
-    rep_org_movement_id = get_rep_id(player_df.rename(columns=rename_dict), cols_to_analyze)
+    rep_org_movement_id = get_rep_id(
+        player_df.rename(columns=rename_dict), cols_to_analyze
+    )
 
     return (
         player_df.loc[
