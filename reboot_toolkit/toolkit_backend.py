@@ -1166,6 +1166,7 @@ def create_population_dataset(
     count_sessions: int = 3,
     count_orgs_players: int = 9,
     count_movements: int = 3,
+    verbose: bool = True,
 ) -> pd.DataFrame:
     """
     Create a population dataset of inverse kinematics and inverse dynamics data from an s3 summary dataframe.
@@ -1177,6 +1178,7 @@ def create_population_dataset(
     :param count_sessions: maximum number of sessions to analyze
     :param count_orgs_players: maximum number of org players to analyze
     :param count_movements: maximum number of movements to analyze
+    :param verbose: whether to print status
     :return: dataframe of inverse kinematics and inverse dynamics data
     """
     if session_dates_to_analyze is None:
@@ -1210,6 +1212,7 @@ def create_population_dataset(
         s3_df_orgs_players.groupby("org_player_id"),
         desc="downloading player data:",
         total=len(org_player_ids),
+        disable=not verbose,
     ):
         player_session_paths = org_player_df["s3_path_delivery"].tolist()
 
