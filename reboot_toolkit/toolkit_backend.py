@@ -1255,9 +1255,11 @@ def create_population_dataset(
             player_df, movement_type, player_mass, dom_hand
         )
 
-        player_df = player_df.merge(inv_dyn_df, on=["org_movement_id", "frame"]).dropna(
-            axis="columns", how="all"
-        )
+        if not inv_dyn_df.empty:
+            player_df = player_df.merge(
+                inv_dyn_df, on=["org_movement_id", "frame"]
+            ).dropna(axis="columns", how="all")
+
         all_dfs.append(player_df)
 
     return pd.concat(all_dfs, ignore_index=True)
@@ -1327,9 +1329,11 @@ def calculate_population_means(
             c for c in hand_df.columns if c.endswith(col_suffixes_to_analyze)
         ]
 
-        hand_df = hand_df[
-            ["norm_time", "org_player_id", "org_movement_id"] + cols_to_analyze
-        ].set_index("norm_time")
+        hand_df = (
+            hand_df[["norm_time", "org_player_id", "org_movement_id"] + cols_to_analyze]
+            .drop_duplicates(subset=["org_player_id", "org_movement_id", "norm_time"])
+            .set_index("norm_time")
+        )
 
         dom_hand_rename_dict = get_dom_hand_rename_dict(hand_df, handedness)
 

@@ -197,7 +197,12 @@ def inverse_dynamics_for_player(player_df, movement_type, player_mass, dom_hand)
         verbose=False,
     )
 
-    model = mujoco.MjModel.from_xml_string(model_xml_str)
+    try:
+        model = mujoco.MjModel.from_xml_string(model_xml_str)
+
+    except ValueError:
+        return pd.DataFrame()
+
     joint_names = get_model_info(model_xml_str, "joint", return_names=True)
 
     inv_dyn_dfs = []
