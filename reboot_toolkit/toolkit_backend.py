@@ -1334,11 +1334,6 @@ def calculate_population_means(
 
         hand_df.rename(columns=dom_hand_rename_dict, inplace=True)
 
-        # todo interpolate where elbow is extended
-        hand_df.loc[
-            hand_df["dom_elbow"] < 30, ["dom_elbow_var_invdyn", "dom_shoulder_rot_vel"]
-        ] = np.nan
-
         cols_to_analyze = [
             c for c in hand_df.columns if c.endswith(col_suffixes_to_analyze)
         ]
@@ -1351,8 +1346,24 @@ def calculate_population_means(
             .reset_index()
         )
 
+        shoulder_mins = interped_df.groupby("org_movement_id")[
+            "dom_shoulder_rot_vel"
+        ].min()
+        ids_valid_min = shoulder_mins.loc[shoulder_mins > -5_000].index
+
+        shoulder_maxes = interped_df.groupby("org_movement_id")[
+            "dom_shoulder_rot_vel"
+        ].max()
+        ids_valid = (
+            ids_valid_min.union(shoulder_maxes.loc[shoulder_maxes < 10_000].index)
+            .unique()
+            .tolist()
+        )
+
         mean_df = (
-            interped_df[["norm_time"] + cols_to_analyze]
+            interped_df.loc[interped_df["org_movement_id"].isin(ids_valid)][
+                ["norm_time"] + cols_to_analyze
+            ]
             .groupby("norm_time")
             .mean()
             .reset_index()
@@ -1380,13 +1391,15 @@ def calculate_population_means(
 def get_rep_id(player_df: pd.DataFrame, cols_to_analyze: list) -> str:
     """Get a representative org movement ID from a dataframe by finding the ID closes to the maxes and mins."""
 
+    player_means = player_df.groupby("org_movement_id")[cols_to_analyze].mean()
     player_maxes = player_df.groupby("org_movement_id")[cols_to_analyze].max()
     player_mins = player_df.groupby("org_movement_id")[cols_to_analyze].min()
 
     return (
         (
-            ((player_maxes - player_maxes.mean()) / player_maxes.std())
-            + ((player_mins - player_mins.mean()) / player_mins.std())
+            ((player_means - player_means.median()) / player_means.std())
+            + ((player_maxes - player_maxes.median()) / player_maxes.std())
+            + ((player_mins - player_mins.median()) / player_mins.std())
         )
         .sum(axis=1)
         .abs()
