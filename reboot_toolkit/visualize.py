@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -240,7 +242,8 @@ def get_joint_angle_animation(
     pop_df: pd.DataFrame,
     time_column: str,
     y_axis_label: str,
-    animation_title: str,
+    y_range: list | None = None,
+    animation_title: str = "",
     frame_step: int = 2,
 ) -> go.Figure:
     """Input a list of analysis dicts and a list of time points at which to analyze them, and get a paired skeleton animation and joint angle plot."""
@@ -375,8 +378,11 @@ def get_joint_angle_animation(
         ),
     )
 
+    if not y_range:
+        y_range = [rep_df[joint_angles].min().min(), rep_df[joint_angles].max().max()]
+
     fig.update_yaxes(
-        patch={"title_text": y_axis_label, "showticklabels": True},
+        patch={"title_text": y_axis_label, "range": y_range, "showticklabels": True},
         row=1,
         col=2,
     )

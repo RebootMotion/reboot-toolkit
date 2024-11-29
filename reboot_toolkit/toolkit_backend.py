@@ -1150,12 +1150,12 @@ def random_sample_with_desired_items(
 
     extra_items = set(full_list) - desired_items
 
-    if (len(extra_items) + len(desired_items)) > count_items:
-        return list(
-            random.sample(extra_items, count_items - len(desired_items))
-        ) + list(desired_items)
+    if (count_items < 0) or ((len(extra_items) + len(desired_items)) <= count_items):
+        return list(extra_items) + list(desired_items)
 
-    return list(extra_items) + list(desired_items)
+    return list(random.sample(extra_items, count_items - len(desired_items))) + list(
+        desired_items
+    )
 
 
 def create_population_dataset(
@@ -1163,9 +1163,9 @@ def create_population_dataset(
     movement_type: str,
     session_dates_to_analyze: list | None = None,
     org_player_ids_to_analyze: list | None = None,
-    count_sessions: int = 3,
-    count_orgs_players: int = 9,
-    count_movements: int = 3,
+    count_sessions: int = -1,
+    count_orgs_players: int = -1,
+    count_movements: int = -1,
     verbose: bool = True,
 ) -> pd.DataFrame:
     """
@@ -1223,15 +1223,16 @@ def create_population_dataset(
         for player_session_path in player_session_paths:
 
             session_ik_paths = wr.s3.list_objects(player_session_path)
-            if len(session_ik_paths) > count_movements:
+            if (count_movements > 0) and (len(session_ik_paths) > count_movements):
                 session_ik_paths = random.sample(session_ik_paths, count_movements)
 
             try:
-                ik_df = wr.s3.read_csv(session_ik_paths).rename(
+                ik_df = wr.s3.read_csv(session_ik_paths, use_threads=True).rename(
                     columns={"Unnamed: 0": "frame"}
                 )
             except wr.exceptions.NoFilesFound:
                 continue
+
             player_dfs.append(ik_df)
 
         if not player_dfs:
@@ -1334,7 +1335,9 @@ def calculate_population_means(
         hand_df.rename(columns=dom_hand_rename_dict, inplace=True)
 
         # todo interpolate where elbow is extended
-        hand_df.loc[hand_df["dom_elbow"] < 30, ["dom_elbow_var_invdyn", "dom_shoulder_rot_vel"]] = np.nan
+        hand_df.loc[
+            hand_df["dom_elbow"] < 30, ["dom_elbow_var_invdyn", "dom_shoulder_rot_vel"]
+        ] = np.nan
 
         cols_to_analyze = [
             c for c in hand_df.columns if c.endswith(col_suffixes_to_analyze)
