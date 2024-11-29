@@ -1325,20 +1325,25 @@ def calculate_population_means(
 
     for handedness, hand_df in population_df.groupby("is_right_handed"):
 
-        cols_to_analyze = [
-            c for c in hand_df.columns if c.endswith(col_suffixes_to_analyze)
-        ]
-
-        hand_df = (
-            hand_df[["norm_time", "org_player_id", "org_movement_id"] + cols_to_analyze]
-            .drop_duplicates(subset=["org_player_id", "org_movement_id", "norm_time"])
-            .set_index("norm_time")
+        hand_df.drop_duplicates(
+            subset=["org_player_id", "org_movement_id", "norm_time"], inplace=True
         )
 
         dom_hand_rename_dict = get_dom_hand_rename_dict(hand_df, handedness)
 
+        hand_df.rename(columns=dom_hand_rename_dict, inplace=True)
+
+        # todo interpolate where elbow is extended
+        hand_df.loc[hand_df["dom_elbow"] < 30, ["dom_elbow_var_invdyn", "dom_shoulder_rot_vel"]] = np.nan
+
+        cols_to_analyze = [
+            c for c in hand_df.columns if c.endswith(col_suffixes_to_analyze)
+        ]
+
         interped_df = (
-            hand_df.groupby(["org_player_id", "org_movement_id"])
+            hand_df[["norm_time", "org_player_id", "org_movement_id"] + cols_to_analyze]
+            .set_index("norm_time")
+            .groupby(["org_player_id", "org_movement_id"])
             .apply(interpolate_df, time_vals=norm_time_range, include_groups=False)
             .reset_index()
         )
@@ -1348,7 +1353,6 @@ def calculate_population_means(
             .groupby("norm_time")
             .mean()
             .reset_index()
-            .rename(columns=dom_hand_rename_dict)
         )
         mean_dfs.append(mean_df)
 
