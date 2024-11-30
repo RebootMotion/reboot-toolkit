@@ -121,7 +121,7 @@ def get_joint_angle_plots(
     for ai, angle in enumerate(joint_angles):
         if pop_df is not None:
             y_low, y_up, y = get_population_joint_angles(
-                pop_df, time_column, angle, plot_colors[ai], "all", opacity=0.05
+                pop_df, time_column, angle, plot_colors[ai], "All", opacity=0.05
             )
             trace_data.extend([y_low, y_up, y])
 
@@ -131,7 +131,7 @@ def get_joint_angle_plots(
                 time_column,
                 angle,
                 plot_colors[ai],
-                "player",
+                "Player",
                 opacity=0.1,
                 dash="dot",
             )
@@ -141,7 +141,7 @@ def get_joint_angle_plots(
             go.Scatter(
                 x=rep_df[time_column],
                 y=rep_df[angle],
-                name=angle,
+                name=f"Current {angle}",
                 legendgroup=angle,
                 mode="lines",
                 line=dict(
@@ -246,6 +246,57 @@ def _get_skeleton_3d(
     )
 
 
+def generic_get_bounds(df: pd.DataFrame, graph_cols: list[str]) -> dict:
+    """
+    derived from get_bounds in main_vertical_jumping
+
+    Get min and max bounds for specific columns from a dataframe.
+
+    :param df: the dataframe from which to get the bounds
+    :param graph_cols: the columns that will be displayed in the time series graphs with the animation
+    :return: dict of bounds
+    """
+
+    # TODO need to finish implementing this for all column inputs
+    single_gc = [c for c in graph_cols if c in df.columns]
+    double_gc = [c for c in graph_cols if f"right_{c}" in df.columns]
+    # bounds1 = {k: v for key in single_gc for k, v in {f"{key}_min": df[key].min(), f"{key}_max": df[key].max()}.items()}
+    bounds_double = {
+        k: v
+        for key in double_gc
+        for k, v in {
+            f"{key}_min": df[[f"right_{key}", f"left_{key}"]].min().min(),
+            f"{key}_max": df[[f"right_{key}", f"left_{key}"]].max().max(),
+        }.items()
+    }
+    bounds_single = {
+        k: v
+        for key in single_gc
+        for k, v in {f"{key}_min": df[key].min(), f"{key}_max": df[key].max()}.items()
+    }
+
+    bounds = bounds_double | bounds_single
+    # bounds = {
+    #     "com_height_min": df["COM_Z"].min(),
+    #     "com_height_max": df["COM_Z"].max(),
+    #     "com_vert_velo_min": df["COM_Zvel"].min(),
+    #     "com_vert_velo_max": df["COM_Zvel"].max(),
+    #     "knees_min": df[["right_knee", "left_knee"]].min().min(),
+    #     "knees_max": df[["right_knee", "left_knee"]].max().max(),
+    #     "hips_min": df[["right_hip_flex", "left_hip_flex"]].min().min(),
+    #     "hips_max": df[["right_hip_flex", "left_hip_flex"]].max().max(),
+    # }
+
+    for coord in ("X", "Y", "Z"):
+        coord_cols = [
+            c for c in list(df) if c.endswith(f"_{coord}") and "Basketball" not in c
+        ]
+        bounds[f"{coord}min"] = df[coord_cols].min().min()
+        bounds[f"{coord}max"] = df[coord_cols].max().max()
+
+    return bounds
+
+
 def get_joint_angle_animation(
     joint_angles,
     rep_df: pd.DataFrame,
@@ -258,6 +309,8 @@ def get_joint_angle_animation(
     frame_step: int = 2,
 ) -> go.Figure:
     """Input a list of analysis dicts and a list of time points at which to analyze them, and get a paired skeleton animation and joint angle plot."""
+
+    bounds = generic_get_bounds(rep_df, joint_angles)
 
     fig = make_subplots(
         rows=1,
@@ -306,7 +359,7 @@ def get_joint_angle_animation(
             rep_df,
             time_column,
             t,
-            "player",
+            "Skeleton",
             line_color="black",
         )
         if i == 0:
@@ -353,8 +406,8 @@ def get_joint_angle_animation(
             direction="left",
             xanchor="left",
             showactive=True,
-            x=0.15,
-            y=-0.03,
+            x=0.2,
+            y=-0.025,
         )
     ]
 
@@ -378,14 +431,35 @@ def get_joint_angle_animation(
         scene1=go.layout.Scene(
             camera=dict(
                 center=dict(x=0, y=0, z=0),
-                eye=dict(x=2, y=0, z=0),
+                eye=dict(x=2.5, y=0, z=0),
                 up=dict(x=0, y=0, z=1),
             ),
-            domain=dict(x=[0, 0.5], y=[0, 1.0]),
-            aspectmode="data",
-            xaxis=dict(showticklabels=False, title_text=""),
-            yaxis=dict(showticklabels=False, title_text=""),
-            zaxis=dict(showticklabels=False, title_text=""),
+            domain=dict(x=[0, 0.45], y=[0, 1.0]),
+            # aspectmode="data",
+            # xaxis=dict(showticklabels=False, title_text=""),
+            # yaxis=dict(showticklabels=False, title_text=""),
+            # zaxis=dict(showticklabels=False, title_text=""),
+            aspectmode="manual",
+            aspectratio=dict(
+                x=1,
+                y=(bounds["Ymax"] - bounds["Ymin"]) / (bounds["Xmax"] - bounds["Xmin"]),
+                z=(bounds["Zmax"] - bounds["Zmin"]) / (bounds["Xmax"] - bounds["Xmin"]),
+            ),
+            xaxis=dict(
+                showticklabels=False,
+                title_text="",
+                range=[bounds["Xmin"], bounds["Xmax"]],
+            ),
+            yaxis=dict(
+                showticklabels=False,
+                title_text="",
+                range=[bounds["Ymin"], bounds["Ymax"]],
+            ),
+            zaxis=dict(
+                showticklabels=False,
+                title_text="",
+                range=[bounds["Zmin"], bounds["Zmax"]],
+            ),
         ),
     )
 
