@@ -17,6 +17,7 @@ import pandas as pd
 import plotly
 import plotly.graph_objects as go
 import pyarrow as pa
+from scipy.signal import savgol_filter
 
 from rapidfuzz import fuzz
 from tqdm import tqdm
@@ -1354,6 +1355,7 @@ def calculate_population_means(
         shoulder_maxes = interped_df.groupby("org_movement_id")[
             "dom_shoulder_rot_vel"
         ].max()
+
         ids_valid = (
             ids_valid_min.union(shoulder_maxes.loc[shoulder_maxes < 10_000].index)
             .unique()
@@ -1374,8 +1376,10 @@ def calculate_population_means(
             interped_df[["norm_time"] + cols_to_analyze]
             .groupby("norm_time")
             .std()
+            .rolling(window=50, center=True)
+            .mean()
+            .ffill()
             .reset_index()
-            .rename(columns=dom_hand_rename_dict)
         )
         std_dfs.append(std_df)
 
