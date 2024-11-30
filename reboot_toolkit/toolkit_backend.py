@@ -1322,8 +1322,10 @@ def calculate_population_means(
     if norm_time_range is None:
         norm_time_range = np.arange(-200, 120)
 
-    mean_dfs = []
+    median_dfs = []
     std_dfs = []
+    q_25_dfs = []
+    q_75_dfs = []
 
     for handedness, hand_df in population_df.groupby("is_right_handed"):
 
@@ -1366,19 +1368,22 @@ def calculate_population_means(
             ["norm_time"] + cols_to_analyze
         ].groupby("norm_time")
 
-        mean_df = grouped_by_nt.mean().reset_index()
-        mean_dfs.append(mean_df)
+        median_dfs.append(grouped_by_nt.median().reset_index())
+        std_dfs.append(grouped_by_nt.std().reset_index())
+        q_25_dfs.append(grouped_by_nt.quantile(0.25).reset_index())
+        q_75_dfs.append(grouped_by_nt.quantile(0.75).reset_index())
 
-        std_df = grouped_by_nt.std().reset_index()
-        std_dfs.append(std_df)
+    median_df = pd.concat(median_dfs).groupby("norm_time").mean()
+    std_df = pd.concat(std_dfs).groupby("norm_time").mean()
+    q_25_df = pd.concat(q_25_dfs).groupby("norm_time").mean()
+    q_75_df = pd.concat(q_75_dfs).groupby("norm_time").mean()
 
-    mean_df = pd.concat(mean_dfs).groupby("norm_time").mean().reset_index()
-    std_df = pd.concat(std_dfs).groupby("norm_time").mean().reset_index()
-
-    if not merge_mean_std:
-        return mean_df, std_df
-
-    return mean_df.merge(std_df, on="norm_time", suffixes=("", "_std"))
+    return (
+        median_df.join(std_df, rsuffix="_std")
+        .join(q_25_df, rsuffix="_25")
+        .join(q_75_df, rsuffix="_75")
+        .reset_index()
+    )
 
 
 def get_rep_id(player_df: pd.DataFrame, cols_to_analyze: list) -> str:
