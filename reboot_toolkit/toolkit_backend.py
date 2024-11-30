@@ -1303,10 +1303,10 @@ def get_dom_hand_rename_dict(
 
 def get_valid_ids_with_shoulder_rot_vel(df):
     shoulder_mins = df.groupby("org_movement_id")["dom_shoulder_rot_vel"].min()
-    ids_valid_min = shoulder_mins.loc[shoulder_mins > -5_000].index
+    ids_valid_min = shoulder_mins.loc[shoulder_mins >= -10_000].index
 
     shoulder_maxes = df.groupby("org_movement_id")["dom_shoulder_rot_vel"].max()
-    ids_valid_max = shoulder_maxes.loc[shoulder_maxes < 10_000].index
+    ids_valid_max = shoulder_maxes.loc[shoulder_maxes <= 15_000].index
 
     ids_intersection = ids_valid_min.intersection(ids_valid_max)
     if len(ids_intersection) > 0:
