@@ -1362,25 +1362,14 @@ def calculate_population_means(
             .tolist()
         )
 
-        mean_df = (
-            interped_df.loc[interped_df["org_movement_id"].isin(ids_valid)][
-                ["norm_time"] + cols_to_analyze
-            ]
-            .groupby("norm_time")
-            .mean()
-            .reset_index()
-        )
+        grouped_by_nt = interped_df.loc[interped_df["org_movement_id"].isin(ids_valid)][
+            ["norm_time"] + cols_to_analyze
+        ].groupby("norm_time")
+
+        mean_df = grouped_by_nt.mean().reset_index()
         mean_dfs.append(mean_df)
 
-        std_df = (
-            interped_df[["norm_time"] + cols_to_analyze]
-            .groupby("norm_time")
-            .std()
-            .rolling(window=50, center=True)
-            .mean()
-            .ffill()
-            .reset_index()
-        )
+        std_df = grouped_by_nt.std().reset_index()
         std_dfs.append(std_df)
 
     mean_df = pd.concat(mean_dfs).groupby("norm_time").mean().reset_index()
