@@ -1393,8 +1393,6 @@ def get_rep_id(player_df: pd.DataFrame, cols_to_analyze: list) -> str:
     ids_valid = get_valid_ids_with_shoulder_rot_vel(player_df)
 
     available_df = player_df.loc[player_df["org_movement_id"].isin(ids_valid)]
-    print(available_df["org_movement_id"].unique())
-    print(ids_valid)
 
     available_grouped = available_df.groupby("org_movement_id")
 
