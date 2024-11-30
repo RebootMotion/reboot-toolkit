@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from plotly.subplots import make_subplots
+from scipy.signal import savgol_filter
 
 plot_colors = [
     "rgb(31, 119, 180)",
@@ -117,6 +118,14 @@ def get_joint_angle_plots(
     """Get all the listed joint angle plots overlaid, including population data."""
     line_width = 2
 
+    if rep_df is None:
+        df_to_plot_label = "Player"
+        df_to_plot = player_df
+
+    else:
+        df_to_plot_label = "Current"
+        df_to_plot = rep_df
+
     trace_data = []
     for ai, angle in enumerate(joint_angles):
         if pop_df is not None:
@@ -125,7 +134,7 @@ def get_joint_angle_plots(
             )
             trace_data.extend([y_low, y_up, y])
 
-        if player_df is not None:
+        if rep_df is not None and player_df is not None:
             y_low, y_up, y = get_population_joint_angles(
                 player_df,
                 time_column,
@@ -139,9 +148,9 @@ def get_joint_angle_plots(
 
         trace_data.append(
             go.Scatter(
-                x=rep_df[time_column],
-                y=rep_df[angle],
-                name=f"Current {angle}",
+                x=df_to_plot[time_column],
+                y=df_to_plot[angle],
+                name=f"{df_to_plot_label} {angle}",
                 legendgroup=angle,
                 mode="lines",
                 line=dict(
@@ -154,7 +163,7 @@ def get_joint_angle_plots(
 
     trace_data.append(
         _get_vert_line(
-            rep_df,
+            player_df if rep_df is None else rep_df,
             time_column,
             time_value,
             joint_angles,
