@@ -255,46 +255,17 @@ def _get_skeleton_3d(
     )
 
 
-def generic_get_bounds(df: pd.DataFrame, graph_cols: list[str]) -> dict:
+def generic_get_bounds(df: pd.DataFrame) -> dict:
     """
     derived from get_bounds in main_vertical_jumping
 
     Get min and max bounds for specific columns from a dataframe.
 
     :param df: the dataframe from which to get the bounds
-    :param graph_cols: the columns that will be displayed in the time series graphs with the animation
     :return: dict of bounds
     """
 
-    # TODO need to finish implementing this for all column inputs
-    single_gc = [c for c in graph_cols if c in df.columns]
-    double_gc = [c for c in graph_cols if f"right_{c}" in df.columns]
-    # bounds1 = {k: v for key in single_gc for k, v in {f"{key}_min": df[key].min(), f"{key}_max": df[key].max()}.items()}
-    bounds_double = {
-        k: v
-        for key in double_gc
-        for k, v in {
-            f"{key}_min": df[[f"right_{key}", f"left_{key}"]].min().min(),
-            f"{key}_max": df[[f"right_{key}", f"left_{key}"]].max().max(),
-        }.items()
-    }
-    bounds_single = {
-        k: v
-        for key in single_gc
-        for k, v in {f"{key}_min": df[key].min(), f"{key}_max": df[key].max()}.items()
-    }
-
-    bounds = bounds_double | bounds_single
-    # bounds = {
-    #     "com_height_min": df["COM_Z"].min(),
-    #     "com_height_max": df["COM_Z"].max(),
-    #     "com_vert_velo_min": df["COM_Zvel"].min(),
-    #     "com_vert_velo_max": df["COM_Zvel"].max(),
-    #     "knees_min": df[["right_knee", "left_knee"]].min().min(),
-    #     "knees_max": df[["right_knee", "left_knee"]].max().max(),
-    #     "hips_min": df[["right_hip_flex", "left_hip_flex"]].min().min(),
-    #     "hips_max": df[["right_hip_flex", "left_hip_flex"]].max().max(),
-    # }
+    bounds = {}
 
     for coord in ("X", "Y", "Z"):
         coord_cols = [
@@ -320,7 +291,7 @@ def get_joint_angle_animation(
 ) -> go.Figure:
     """Input a list of analysis dicts and a list of time points at which to analyze them, and get a paired skeleton animation and joint angle plot."""
 
-    bounds = generic_get_bounds(rep_df, joint_angles)
+    bounds = generic_get_bounds(rep_df)
 
     fig = make_subplots(
         rows=1,
@@ -479,7 +450,17 @@ def get_joint_angle_animation(
     )
 
     if not y_range:
-        y_range = [rep_df[joint_angles].min().min(), rep_df[joint_angles].max().max()]
+        if plot_rep_time_series:
+            y_range = [
+                rep_df[joint_angles].min().min(),
+                rep_df[joint_angles].max().max(),
+            ]
+
+        else:
+            y_range = [
+                player_df[joint_angles].min().min(),
+                player_df[joint_angles].max().max(),
+            ]
 
     fig.update_yaxes(
         patch={"title_text": y_axis_label, "range": y_range, "showticklabels": True},

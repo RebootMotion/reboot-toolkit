@@ -1301,6 +1301,20 @@ def get_dom_hand_rename_dict(
     }
 
 
+def get_valid_ids_with_shoulder_rot_vel(df):
+    shoulder_mins = df.groupby("org_movement_id")["dom_shoulder_rot_vel"].min()
+    ids_valid_min = shoulder_mins.loc[shoulder_mins > -5_000].index
+
+    shoulder_maxes = df.groupby("org_movement_id")["dom_shoulder_rot_vel"].max()
+    ids_valid_max = shoulder_maxes.loc[shoulder_maxes < 10_000].index
+
+    ids_intersection = ids_valid_min.intersection(ids_valid_max)
+    if len(ids_intersection) > 0:
+        return ids_intersection.tolist()
+
+    return ids_valid_min.union(ids_valid_max).tolist()
+
+
 def calculate_population_means(
     population_df: pd.DataFrame,
     col_suffixes_to_analyze: list | tuple,
@@ -1349,20 +1363,7 @@ def calculate_population_means(
             .reset_index()
         )
 
-        shoulder_mins = interped_df.groupby("org_movement_id")[
-            "dom_shoulder_rot_vel"
-        ].min()
-        ids_valid_min = shoulder_mins.loc[shoulder_mins > -5_000].index
-
-        shoulder_maxes = interped_df.groupby("org_movement_id")[
-            "dom_shoulder_rot_vel"
-        ].max()
-
-        ids_valid = (
-            ids_valid_min.union(shoulder_maxes.loc[shoulder_maxes < 10_000].index)
-            .unique()
-            .tolist()
-        )
+        ids_valid = get_valid_ids_with_shoulder_rot_vel(interped_df)
 
         grouped_by_nt = interped_df.loc[interped_df["org_movement_id"].isin(ids_valid)][
             ["norm_time"] + cols_to_analyze
@@ -1389,9 +1390,17 @@ def calculate_population_means(
 def get_rep_id(player_df: pd.DataFrame, cols_to_analyze: list) -> str:
     """Get a representative org movement ID from a dataframe by finding the ID closes to the maxes and mins."""
 
-    player_means = player_df.groupby("org_movement_id")[cols_to_analyze].mean()
-    player_maxes = player_df.groupby("org_movement_id")[cols_to_analyze].max()
-    player_mins = player_df.groupby("org_movement_id")[cols_to_analyze].min()
+    ids_valid = get_valid_ids_with_shoulder_rot_vel(player_df)
+
+    available_df = player_df.loc[player_df["org_movement_id"].isin(ids_valid)]
+    print(available_df["org_movement_id"].unique())
+    print(ids_valid)
+
+    available_grouped = available_df.groupby("org_movement_id")
+
+    player_means = available_grouped[cols_to_analyze].mean()
+    player_maxes = available_grouped[cols_to_analyze].max()
+    player_mins = available_grouped[cols_to_analyze].min()
 
     return (
         (
@@ -1413,6 +1422,8 @@ def get_rep_df(player_df, cols_to_analyze, norm_time_min, norm_time_max):
     rep_org_movement_id = get_rep_id(
         player_df.rename(columns=rename_dict), cols_to_analyze
     )
+    print(rep_org_movement_id)
+    print()
 
     return (
         player_df.loc[
