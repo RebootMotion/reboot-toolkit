@@ -134,7 +134,7 @@ def get_joint_angle_plots(
             )
             trace_data.extend([y_low, y_up, y])
 
-        if rep_df is not None and player_df is not None:
+        if (rep_df is not None and player_df is not None) or (pop_df is None):
             y_low, y_up, y = get_population_joint_angles(
                 player_df,
                 time_column,
@@ -316,6 +316,7 @@ def get_joint_angle_animation(
     y_range: list | None = None,
     animation_title: str = "",
     frame_step: int = 2,
+    plot_rep_time_series: bool = True,
 ) -> go.Figure:
     """Input a list of analysis dicts and a list of time points at which to analyze them, and get a paired skeleton animation and joint angle plot."""
 
@@ -357,7 +358,12 @@ def get_joint_angle_animation(
         steps.append(step)
 
         frame_data = get_joint_angle_plots(
-            joint_angles, rep_df, player_df, pop_df, time_column, t
+            joint_angles,
+            rep_df if plot_rep_time_series else None,
+            player_df,
+            pop_df,
+            time_column,
+            t,
         )
 
         if i == 0:
