@@ -47,6 +47,8 @@ def get_population_joint_angles(
     angle_col: str,
     pop_color: str,
     prefix: str,
+    opacity: float = 0.15,
+    dash: str = "dash",
     visible=True,
 ):
     """Get upper and lower scatter plots, filled in between, showing the population range of a joint angle."""
@@ -55,8 +57,13 @@ def get_population_joint_angles(
 
     x_population = pop_df[time_col]
 
-    y_pop_lower = pop_df[angle_col] - pop_df[f"{angle_col}_std"]
-    y_pop_upper = pop_df[angle_col] + pop_df[f"{angle_col}_std"]
+    if f"{angle_col}_25" in pop_df.columns:
+        y_pop_lower = pop_df[f"{angle_col}_25"]
+        y_pop_upper = pop_df[f"{angle_col}_75"]
+
+    else:
+        y_pop_lower = pop_df[angle_col] - pop_df[f"{angle_col}_std"]
+        y_pop_upper = pop_df[angle_col] + pop_df[f"{angle_col}_std"]
 
     y_lower_trace = go.Scatter(
         x=x_population,
@@ -86,7 +93,9 @@ def get_population_joint_angles(
         x=x_population,
         y=pop_df[angle_col],
         mode="lines",
-        line=dict(color=pop_color.replace(", 0.15", ""), width=1, dash="dash"),
+        line=dict(
+            color=pop_color.replace(f", {round(opacity, 2)}", ""), width=1, dash=dash
+        ),
         name=f"{prefix} {angle_col}",
         visible=visible,
         showlegend=True,
@@ -98,33 +107,35 @@ def get_population_joint_angles(
 
 def get_joint_angle_plots(
     joint_angles,
-    rep_df: pd.DataFrame,
-    player_df: pd.DataFrame,
+    rep_df: pd.DataFrame | None,
+    player_df: pd.DataFrame | None,
     pop_df: pd.DataFrame,
     time_column: str,
     time_value: float = 0,
     vert_line_name: str = None,
 ):
     """Get all the listed joint angle plots overlaid, including population data."""
-    # line_styles = ["dashdot", "dot", "dash"]
     line_width = 2
 
     trace_data = []
     for ai, angle in enumerate(joint_angles):
         if pop_df is not None:
             y_low, y_up, y = get_population_joint_angles(
-                pop_df, time_column, angle, plot_colors[ai], "pop"
+                pop_df, time_column, angle, plot_colors[ai], "all", opacity=0.05
             )
+            trace_data.extend([y_low, y_up, y])
 
-        elif player_df is not None:
+        if player_df is not None:
             y_low, y_up, y = get_population_joint_angles(
-                player_df, time_column, angle, plot_colors[ai], "player"
+                player_df,
+                time_column,
+                angle,
+                plot_colors[ai],
+                "player",
+                opacity=0.1,
+                dash="dot",
             )
-
-        else:
-            raise ValueError("one of pop_df or player_df must not be None")
-
-        trace_data.extend([y_low, y_up, y])
+            trace_data.extend([y_low, y_up, y])
 
         trace_data.append(
             go.Scatter(
@@ -238,8 +249,8 @@ def _get_skeleton_3d(
 def get_joint_angle_animation(
     joint_angles,
     rep_df: pd.DataFrame,
-    player_df: pd.DataFrame,
-    pop_df: pd.DataFrame,
+    player_df: pd.DataFrame | None,
+    pop_df: pd.DataFrame | None,
     time_column: str,
     y_axis_label: str,
     y_range: list | None = None,
