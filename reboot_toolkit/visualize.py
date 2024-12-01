@@ -22,6 +22,7 @@ def _get_vert_line(
     angle_cols: str,
     line_name: str = None,
     dash: str = "dash",
+    color: str = "black",
 ) -> go.Scatter:
     """Input a pandas dataframe of joint angles, the column to use as time, the time, the angle column, and get a vertical dashed line at that time."""
 
@@ -39,7 +40,7 @@ def _get_vert_line(
         fill=None,
         name=line_name,
         mode="lines",
-        line=dict(color="black", width=1, dash=dash),
+        line=dict(color=color, width=1, dash=dash),
     )
 
 
@@ -136,6 +137,7 @@ def get_joint_angle_plots(
             joint_angles,
             line_name="MER",
             dash="solid",
+            color="gray",
         )
     ]
     for ai, angle in enumerate(joint_angles):
