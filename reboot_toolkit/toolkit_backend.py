@@ -1319,6 +1319,8 @@ def calculate_population_means(
     population_df: pd.DataFrame,
     col_suffixes_to_analyze: list | tuple,
     norm_time_range: np.ndarray | None = None,
+    cols_to_interp_at_low_elbow_flex: list | None = None,
+    low_elbow_flex_cutoff: float = 30,
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """
     Calculate population means and standard deviations.
@@ -1326,6 +1328,8 @@ def calculate_population_means(
     :param population_df: the dataframe for calculating population means and standard deviations
     :param col_suffixes_to_analyze: column suffixes to analyze
     :param norm_time_range: optional norm time range
+    :param cols_to_interp_at_low_elbow_flex: columns to interpolate when elbow flexion is less than a cutoff
+    :param low_elbow_flex_cutoff: the cutoff angle below which columns will be interpolated
     :return:
     """
     if not isinstance(col_suffixes_to_analyze, tuple):
@@ -1352,6 +1356,13 @@ def calculate_population_means(
         cols_to_analyze = [
             c for c in hand_df.columns if c.endswith(col_suffixes_to_analyze)
         ]
+
+        if cols_to_interp_at_low_elbow_flex:
+            hand_df.loc[
+                (hand_df["norm_time"] < 0)
+                & (hand_df["dom_elbow"] < low_elbow_flex_cutoff),
+                cols_to_interp_at_low_elbow_flex,
+            ] = np.nan
 
         interped_df = (
             hand_df[["norm_time", "org_player_id", "org_movement_id"] + cols_to_analyze]
@@ -1410,7 +1421,14 @@ def get_rep_id(player_df: pd.DataFrame, cols_to_analyze: list) -> str:
     )
 
 
-def get_rep_df(player_df, cols_to_analyze, norm_time_min, norm_time_max):
+def get_rep_df(
+    player_df,
+    cols_to_analyze,
+    norm_time_min,
+    norm_time_max,
+    cols_to_interp_at_low_elbow_flex: list | None = None,
+    low_elbow_flex_cutoff: float = 30,
+):
     """Get the representative dataframe."""
 
     rename_dict = get_dom_hand_rename_dict(player_df)
@@ -1419,7 +1437,7 @@ def get_rep_df(player_df, cols_to_analyze, norm_time_min, norm_time_max):
         player_df.rename(columns=rename_dict), cols_to_analyze
     )
 
-    return (
+    rep_df = (
         player_df.loc[
             (player_df["org_movement_id"] == rep_org_movement_id)
             & (player_df["norm_time"] >= norm_time_min)
@@ -1429,3 +1447,18 @@ def get_rep_df(player_df, cols_to_analyze, norm_time_min, norm_time_max):
         .rename(columns=rename_dict)
         .copy()
     )
+
+    if cols_to_interp_at_low_elbow_flex:
+        rep_df.loc[
+            (rep_df["norm_time"] < 0) & (rep_df["dom_elbow"] < 30),
+            cols_to_interp_at_low_elbow_flex,
+        ] = np.nan
+
+        rep_df[cols_to_interp_at_low_elbow_flex] = (
+            rep_df[["norm_time"] + cols_to_interp_at_low_elbow_flex]
+            .set_index("norm_time")
+            .interpolate(method="quadratic")
+            .to_numpy()
+        )
+
+    return rep_df

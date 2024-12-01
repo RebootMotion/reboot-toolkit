@@ -114,6 +114,7 @@ def get_joint_angle_plots(
     time_column: str,
     time_value: float = 0,
     vert_line_name: str = None,
+    filter_primary_trace: bool = True,
 ):
     """Get all the listed joint angle plots overlaid, including population data."""
     line_width = 2
@@ -149,7 +150,11 @@ def get_joint_angle_plots(
         trace_data.append(
             go.Scatter(
                 x=df_to_plot[time_column],
-                y=df_to_plot[angle],
+                y=(
+                    savgol_filter(df_to_plot[angle], window_length=21, polyorder=7)
+                    if filter_primary_trace
+                    else df_to_plot[angle]
+                ),
                 name=f"{df_to_plot_label} {angle}",
                 legendgroup=angle,
                 mode="lines",
@@ -163,7 +168,7 @@ def get_joint_angle_plots(
 
     trace_data.append(
         _get_vert_line(
-            player_df if rep_df is None else rep_df,
+            player_df if player_df is not None else rep_df,
             time_column,
             time_value,
             joint_angles,
