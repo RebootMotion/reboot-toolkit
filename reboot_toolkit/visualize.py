@@ -21,6 +21,7 @@ def _get_vert_line(
     time: float,
     angle_cols: str,
     line_name: str = None,
+    dash: str = "dash",
 ) -> go.Scatter:
     """Input a pandas dataframe of joint angles, the column to use as time, the time, the angle column, and get a vertical dashed line at that time."""
 
@@ -38,7 +39,7 @@ def _get_vert_line(
         fill=None,
         name=line_name,
         mode="lines",
-        line=dict(color="black", width=1, dash="dash"),
+        line=dict(color="black", width=1, dash=dash),
     )
 
 
@@ -127,7 +128,16 @@ def get_joint_angle_plots(
         df_to_plot_label = "Current"
         df_to_plot = rep_df
 
-    trace_data = []
+    trace_data = [
+        _get_vert_line(
+            player_df if player_df is not None else rep_df,
+            time_column,
+            df_to_plot.loc[df_to_plot["dom_shoulder_rot"].idxmin()]["norm_time"],
+            joint_angles,
+            line_name="MER",
+            dash="solid",
+        )
+    ]
     for ai, angle in enumerate(joint_angles):
         if pop_df is not None:
             y_low, y_up, y = get_population_joint_angles(
