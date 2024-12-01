@@ -1319,7 +1319,6 @@ def calculate_population_means(
     population_df: pd.DataFrame,
     col_suffixes_to_analyze: list | tuple,
     norm_time_range: np.ndarray | None = None,
-    merge_mean_std: bool = True,
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """
     Calculate population means and standard deviations.
@@ -1327,7 +1326,6 @@ def calculate_population_means(
     :param population_df: the dataframe for calculating population means and standard deviations
     :param col_suffixes_to_analyze: column suffixes to analyze
     :param norm_time_range: optional norm time range
-    :param merge_mean_std: return one merged dataframe of means and standard deviations or two dataframes
     :return:
     """
     if not isinstance(col_suffixes_to_analyze, tuple):
@@ -1420,8 +1418,6 @@ def get_rep_df(player_df, cols_to_analyze, norm_time_min, norm_time_max):
     rep_org_movement_id = get_rep_id(
         player_df.rename(columns=rename_dict), cols_to_analyze
     )
-    print(rep_org_movement_id)
-    print()
 
     return (
         player_df.loc[
