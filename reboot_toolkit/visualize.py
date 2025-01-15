@@ -318,7 +318,7 @@ def get_skeleton_3d(
     )
 
 
-def generic_get_bounds(df: pd.DataFrame, coords: tuple[str] = ("X", "Y", "Z")) -> dict:
+def get_bounds(df: pd.DataFrame, coords: tuple[str] = ("X", "Y", "Z")) -> dict:
     """
     Get min and max bounds for specific columns from a dataframe.
 
@@ -369,7 +369,7 @@ def get_player_animation(
     :return: the plotly figure with the skeleton animation paired with scatter traces
     """
 
-    bounds = generic_get_bounds(rep_df)
+    bounds = get_bounds(rep_df)
 
     fig = make_subplots(
         rows=1,
