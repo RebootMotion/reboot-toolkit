@@ -961,7 +961,7 @@ def get_joint_plot(
         "pop_df": pop_df,
         "time_column": time_column,
         "joint_angles": joint_angles,
-        "plot_colors": plot_colors,
+        "COLORS_FOR_PLOTS": plot_colors,
     }
 
     payload = {"function_name": "get_joint_angle_plots", "args": args}

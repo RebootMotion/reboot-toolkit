@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy.signal import savgol_filter
 
-plot_colors = [
+COLORS_FOR_PLOTS = [
     "rgb(31, 119, 180)",
     "rgb(255, 127, 14)",
     "rgb(44, 160, 44)",
@@ -15,27 +15,39 @@ plot_colors = [
 ]
 
 
-def _get_vert_line(
+def get_vert_line(
     df: pd.DataFrame,
-    time_col: str,
-    time: float,
-    angle_cols: str,
+    x_col: str,
+    x_value: float,
+    y_cols: str,
     line_name: str = None,
     dash: str = "dash",
     color: str = "black",
 ) -> go.Scatter:
-    """Input a pandas dataframe of joint angles, the column to use as time, the time, the angle column, and get a vertical dashed line at that time."""
+    """
+    Create a plotly trace for a vertical line from a dataframe at a given x value for a list of y values.
+    The line will go from the min of the y cols to the max of the y cols.
+
+    :param df: the dataframe with data for creating the vertical line.
+    :param x_col: the x_col for creating the x location
+    :param x_value: the value of the x location
+    :param y_cols: the y_cols across which we want to create a vertical line
+    :param line_name: the name to assign the line
+    :param dash: the dash style to use
+    :param color: the color to use
+    :return: the plotly trace for a vertical line
+    """
 
     if line_name is None:
         show_legend = False
     else:
         show_legend = True
 
-    idx = abs(df[time_col] - float(time)).idxmin()
+    x_loc = df[x_col].loc[(df[x_col] - float(x_value)).abs().idxmin()]
 
     return go.Scatter(
-        x=[df[time_col].loc[idx], df[time_col].loc[idx]],
-        y=[df[angle_cols].max().max(), df[angle_cols].min().min()],
+        x=[x_loc, x_loc],
+        y=[df[y_cols].min().min(), df[y_cols].max().max()],
         showlegend=show_legend,
         fill=None,
         name=line_name,
@@ -44,39 +56,51 @@ def _get_vert_line(
     )
 
 
-def get_population_joint_angles(
+def get_population_traces(
     pop_df: pd.DataFrame,
-    time_col: str,
-    angle_col: str,
+    x_col: str,
+    y_col: str,
     pop_color: str,
     prefix: str,
     opacity: float = 0.15,
     dash: str = "dash",
     visible=True,
-):
-    """Get upper and lower scatter plots, filled in between, showing the population range of a joint angle."""
+) -> tuple[go.Scatter, go.Scatter, go.Scatter]:
+    """
+    Get upper and lower scatter plots, filled in between, showing the population range of a joint angle.
+
+    :param pop_df: dataframe with population data
+    :param x_col: the x column to use for the traces
+    :param y_col: the y column to use for the traces
+    :param pop_color: the color to use for the population
+    :param prefix: the prefix to use for the legend label
+    :param opacity: the opacity for the traces
+    :param dash: the dash style for the traces
+    :param visible: whether the trace is default visible
+    :return: the lower, upper, and actual traces
+    """
 
     pop_color_low_opac = f"rgba{pop_color[3:-1]}, 0.15)"
 
-    x_population = pop_df[time_col]
+    x_population = pop_df[x_col]
 
-    if f"{angle_col}_25" in pop_df.columns:
-        y_pop_lower = pop_df[f"{angle_col}_25"]
-        y_pop_upper = pop_df[f"{angle_col}_75"]
+    if f"{y_col}_25" in pop_df.columns:
+        y_pop_lower = pop_df[f"{y_col}_25"]
+        y_pop_upper = pop_df[f"{y_col}_75"]
 
     else:
-        y_pop_lower = pop_df[angle_col] - pop_df[f"{angle_col}_std"]
-        y_pop_upper = pop_df[angle_col] + pop_df[f"{angle_col}_std"]
+        y_pop_lower = pop_df[y_col] - pop_df[f"{y_col}_std"]
+        y_pop_upper = pop_df[y_col] + pop_df[f"{y_col}_std"]
 
     y_lower_trace = go.Scatter(
         x=x_population,
         y=y_pop_lower,
         mode="lines",
         line=dict(color=pop_color_low_opac, width=0.01),
-        name=f"{prefix} {angle_col}",
+        name=f"{prefix} {y_col}",
         visible=visible,
         showlegend=False,
-        legendgroup=f"{prefix} {angle_col}",
+        legendgroup=f"{prefix} {y_col}",
     )
 
     y_upper_trace = go.Scatter(
@@ -86,23 +110,23 @@ def get_population_joint_angles(
         line=dict(color=pop_color_low_opac, width=0.01),
         fill="tonexty",
         fillcolor=pop_color_low_opac,
-        name=f"{prefix} {angle_col}",
+        name=f"{prefix} {y_col}",
         visible=visible,
         showlegend=False,
-        legendgroup=f"{prefix} {angle_col}",
+        legendgroup=f"{prefix} {y_col}",
     )
 
     y_trace = go.Scatter(
         x=x_population,
-        y=pop_df[angle_col],
+        y=pop_df[y_col],
         mode="lines",
         line=dict(
             color=pop_color.replace(f", {round(opacity, 2)}", ""), width=1, dash=dash
         ),
-        name=f"{prefix} {angle_col}",
+        name=f"{prefix} {y_col}",
         visible=visible,
         showlegend=True,
-        legendgroup=f"{prefix} {angle_col}",
+        legendgroup=f"{prefix} {y_col}",
     )
 
     return y_lower_trace, y_upper_trace, y_trace
@@ -130,7 +154,7 @@ def get_joint_angle_plots(
         df_to_plot = rep_df
 
     trace_data = [
-        _get_vert_line(
+        get_vert_line(
             player_df if player_df is not None else rep_df,
             time_column,
             df_to_plot.loc[df_to_plot["dom_shoulder_rot"].idxmin()]["norm_time"],
@@ -142,17 +166,17 @@ def get_joint_angle_plots(
     ]
     for ai, angle in enumerate(joint_angles):
         if pop_df is not None:
-            y_low, y_up, y = get_population_joint_angles(
-                pop_df, time_column, angle, plot_colors[ai], "All", opacity=0.05
+            y_low, y_up, y = get_population_traces(
+                pop_df, time_column, angle, COLORS_FOR_PLOTS[ai], "All", opacity=0.05
             )
             trace_data.extend([y_low, y_up, y])
 
         if (rep_df is not None and player_df is not None) or (pop_df is None):
-            y_low, y_up, y = get_population_joint_angles(
+            y_low, y_up, y = get_population_traces(
                 player_df,
                 time_column,
                 angle,
-                plot_colors[ai],
+                COLORS_FOR_PLOTS[ai],
                 "Player",
                 opacity=0.1,
                 dash="dot",
@@ -171,7 +195,7 @@ def get_joint_angle_plots(
                 legendgroup=angle,
                 mode="lines",
                 line=dict(
-                    color=plot_colors[ai],
+                    color=COLORS_FOR_PLOTS[ai],
                     width=line_width,
                     dash="solid",
                 ),
@@ -179,7 +203,7 @@ def get_joint_angle_plots(
         )
 
     trace_data.append(
-        _get_vert_line(
+        get_vert_line(
             player_df if player_df is not None else rep_df,
             time_column,
             time_value,
