@@ -19,7 +19,7 @@ def get_vert_line(
     df: pd.DataFrame,
     x_col: str,
     x_value: float,
-    y_cols: str,
+    y_cols: list[str],
     line_name: str = None,
     dash: str = "dash",
     color: str = "black",
@@ -132,19 +132,31 @@ def get_population_traces(
     return y_lower_trace, y_upper_trace, y_trace
 
 
-def get_joint_angle_plots(
-    joint_angles,
+def get_player_population_traces(
+    cols_to_plot: list[str],
     rep_df: pd.DataFrame | None,
     player_df: pd.DataFrame | None,
     pop_df: pd.DataFrame,
-    time_column: str,
-    time_value: float = 0,
+    x_column: str,
+    x_value: float,
     vert_line_name: str = None,
     filter_primary_trace: bool = True,
-):
-    """Get all the listed joint angle plots overlaid, including population data."""
-    line_width = 2
+    line_width: int = 2,
+) -> list:
+    """
+    Get a list of plotly traces that depict the player and population plots for a list of columns.
 
+    :param cols_to_plot: the columns to plot
+    :param rep_df: Optional representative dataframe to plot a single movement
+    :param player_df: Optional player dataframe to plot the traces for aggregated movements for a player
+    :param pop_df: Population dataframe to plot the traces for aggregated movements for a player
+    :param x_column: the name of the x column to use for the traces
+    :param x_value: the x value to use for a vertical line for the traces
+    :param vert_line_name: optional name for the vertical line
+    :param filter_primary_trace: whether to apply filtering to the primary trace
+    :param line_width: the width for the trace lines
+    :return: list of plotly traces
+    """
     if rep_df is None:
         df_to_plot_label = "Player"
         df_to_plot = player_df
@@ -156,25 +168,25 @@ def get_joint_angle_plots(
     trace_data = [
         get_vert_line(
             player_df if player_df is not None else rep_df,
-            time_column,
+            x_column,
             df_to_plot.loc[df_to_plot["dom_shoulder_rot"].idxmin()]["norm_time"],
-            joint_angles,
+            cols_to_plot,
             line_name="MER",
             dash="solid",
             color="gray",
         )
     ]
-    for ai, angle in enumerate(joint_angles):
+    for ai, angle in enumerate(cols_to_plot):
         if pop_df is not None:
             y_low, y_up, y = get_population_traces(
-                pop_df, time_column, angle, COLORS_FOR_PLOTS[ai], "All", opacity=0.05
+                pop_df, x_column, angle, COLORS_FOR_PLOTS[ai], "All", opacity=0.05
             )
             trace_data.extend([y_low, y_up, y])
 
         if (rep_df is not None and player_df is not None) or (pop_df is None):
             y_low, y_up, y = get_population_traces(
                 player_df,
-                time_column,
+                x_column,
                 angle,
                 COLORS_FOR_PLOTS[ai],
                 "Player",
@@ -185,7 +197,7 @@ def get_joint_angle_plots(
 
         trace_data.append(
             go.Scatter(
-                x=df_to_plot[time_column],
+                x=df_to_plot[x_column],
                 y=(
                     savgol_filter(df_to_plot[angle], window_length=21, polyorder=7)
                     if filter_primary_trace
@@ -205,9 +217,9 @@ def get_joint_angle_plots(
     trace_data.append(
         get_vert_line(
             player_df if player_df is not None else rep_df,
-            time_column,
-            time_value,
-            joint_angles,
+            x_column,
+            x_value,
+            cols_to_plot,
             line_name=vert_line_name,
         )
     )
@@ -215,16 +227,26 @@ def get_joint_angle_plots(
     return trace_data
 
 
-def _get_skeleton_3d(
+def get_skeleton_3d(
     skel_df: pd.DataFrame,
-    time_col: str,
-    time: float,
+    x_col: str,
+    x_value: float,
     legend_label: str,
     line_color: str = "black",
 ) -> go.Scatter3d:
-    """Input a pandas dataframe with key points, the column to use as the time, the time, a legend, label, and line color, and get a 3D skeleton scatterplot."""
+    """
+    Input a dataframe with key points, the x column to use, the x value at which to plot,
+    a legend, label, and line color, and get a 3D skeleton scatterplot.
 
-    idx = abs(skel_df[time_col] - float(time)).idxmin()
+    :param skel_df: the dataframe with key points
+    :param x_col: the x column to use
+    :param x_value: the x value to use for a vertical line for the traces
+    :param legend_label: the legend label for identifying this trace
+    :param line_color: the line color for the trace
+    :return: the 3d scatter plot for the skeleton
+    """
+
+    idx = (skel_df[x_col] - float(x_value)).abs().idxmin()
 
     joints = [
         "NECK",
@@ -296,21 +318,20 @@ def _get_skeleton_3d(
     )
 
 
-def generic_get_bounds(df: pd.DataFrame) -> dict:
+def generic_get_bounds(df: pd.DataFrame, coords: tuple[str] = ("X", "Y", "Z")) -> dict:
     """
-    derived from get_bounds in main_vertical_jumping
-
     Get min and max bounds for specific columns from a dataframe.
 
     :param df: the dataframe from which to get the bounds
-    :return: dict of bounds
+    :param coords: the coords for which to calculate the bounds
+    :return: dict of bounds for each of the input coords
     """
 
     bounds = {}
 
-    for coord in ("X", "Y", "Z"):
+    for coord in coords:
         coord_cols = [
-            c for c in list(df) if c.endswith(f"_{coord}") and "Basketball" not in c
+            c for c in list(df) if c.endswith(f"_{coord}") and "ball" not in c.lower()
         ]
         bounds[f"{coord}min"] = df[coord_cols].min().min()
         bounds[f"{coord}max"] = df[coord_cols].max().max()
@@ -318,26 +339,42 @@ def generic_get_bounds(df: pd.DataFrame) -> dict:
     return bounds
 
 
-def get_joint_angle_animation(
-    joint_angles,
+def get_player_animation(
+    cols_to_plot: list[str],
     rep_df: pd.DataFrame,
     player_df: pd.DataFrame | None,
     pop_df: pd.DataFrame | None,
-    time_column: str,
+    x_column: str,
     y_axis_label: str,
     y_range: list | None = None,
     animation_title: str = "",
     frame_step: int = 2,
     plot_rep_time_series: bool = True,
+    subplot_titles: list[str] | None = None,
 ) -> go.Figure:
-    """Input a list of analysis dicts and a list of time points at which to analyze them, and get a paired skeleton animation and joint angle plot."""
+    """
+    Create a plotly figure that shows a player animation paired with time series scatter traces.
+
+    :param cols_to_plot: the cols to plot for the scatter traces
+    :param rep_df: Optional dataframe for the representative movement for the scatter traces
+    :param player_df: optional dataframe of all player movements for the scatter traces
+    :param pop_df: dataframe to use as the population for all movements
+    :param x_column: the x column to use for the scatter traces
+    :param y_axis_label: the label for the y axis
+    :param y_range: Optional specified range for the y axis
+    :param animation_title: the title for the animation
+    :param frame_step: how many frames to traverse in one step for the animation
+    :param plot_rep_time_series: whether to plot the representative time series or not
+    :param subplot_titles: optional list of subplot titles
+    :return: the plotly figure with the skeleton animation paired with scatter traces
+    """
 
     bounds = generic_get_bounds(rep_df)
 
     fig = make_subplots(
         rows=1,
         cols=2,
-        # subplot_titles=[animation_title, joint_angle_title],
+        subplot_titles=subplot_titles,
         specs=[[{"type": "scene"}, {"type": "xy"}]],
     )
 
@@ -345,9 +382,7 @@ def get_joint_angle_animation(
     frames = []
 
     times = (
-        player_df[time_column].tolist()
-        if pop_df is None
-        else pop_df[time_column].tolist()
+        player_df[x_column].tolist() if pop_df is None else pop_df[x_column].tolist()
     )[::frame_step]
 
     for i, t in enumerate(times):
@@ -369,25 +404,21 @@ def get_joint_angle_animation(
 
         steps.append(step)
 
-        frame_data = get_joint_angle_plots(
-            joint_angles,
-            rep_df if plot_rep_time_series else None,
-            player_df,
-            pop_df,
-            time_column,
-            t,
+        frame_data = get_player_population_traces(
+            cols_to_plot=cols_to_plot,
+            rep_df=rep_df if plot_rep_time_series else None,
+            player_df=player_df,
+            pop_df=pop_df,
+            x_column=x_column,
+            x_value=t,
         )
 
         if i == 0:
             for trace in frame_data:
                 fig.add_trace(trace, row=1, col=2)
 
-        skel_3d_trace = _get_skeleton_3d(
-            rep_df,
-            time_column,
-            t,
-            "Skeleton",
-            line_color="black",
+        skel_3d_trace = get_skeleton_3d(
+            rep_df, x_column, t, "Skeleton", line_color="black"
         )
         if i == 0:
             fig.add_trace(skel_3d_trace, row=1, col=1)
@@ -442,7 +473,7 @@ def get_joint_angle_animation(
         {
             "currentvalue": {
                 "font": {"size": 12},
-                "prefix": f"{time_column}: ",
+                "prefix": f"{x_column}: ",
                 "visible": True,
             },
             "transition": {"duration": 100.0, "easing": "linear"},
@@ -462,10 +493,6 @@ def get_joint_angle_animation(
                 up=dict(x=0, y=0, z=1),
             ),
             domain=dict(x=[0, 0.45], y=[0, 1.0]),
-            # aspectmode="data",
-            # xaxis=dict(showticklabels=False, title_text=""),
-            # yaxis=dict(showticklabels=False, title_text=""),
-            # zaxis=dict(showticklabels=False, title_text=""),
             aspectmode="manual",
             aspectratio=dict(
                 x=1,
@@ -493,14 +520,14 @@ def get_joint_angle_animation(
     if not y_range:
         if plot_rep_time_series:
             y_range = [
-                rep_df[joint_angles].min().min(),
-                rep_df[joint_angles].max().max(),
+                rep_df[cols_to_plot].min().min(),
+                rep_df[cols_to_plot].max().max(),
             ]
 
         else:
             y_range = [
-                player_df[joint_angles].min().min(),
-                player_df[joint_angles].max().max(),
+                player_df[cols_to_plot].min().min(),
+                player_df[cols_to_plot].max().max(),
             ]
 
     fig.update_yaxes(
@@ -511,7 +538,7 @@ def get_joint_angle_animation(
 
     fig.update_xaxes(
         patch={
-            "title": time_column,
+            "title": x_column,
             "type": "linear",
             "showticklabels": True,
         },

@@ -41,5 +41,5 @@ from .biomechanics import (
     reorder_joint_angle_df_like_model,
     inverse_dynamics,
 )
-from .visualize import get_joint_angle_animation
+from .visualize import get_player_animation
 from .reboot_motion_api import RebootClient
