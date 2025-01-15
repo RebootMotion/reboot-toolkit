@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import boto3
 import mujoco
 import numpy as np
@@ -33,12 +35,12 @@ def calc_dist_btwn(
     return dist
 
 
-def get_bone_lengths(pd_object: Union[pd.Series, pd.DataFrame]):
+def get_segment_lengths(pd_object: Union[pd.Series, pd.DataFrame]):
     """
-    Get all the bone lengths in an IK dataframe or series
+    Get all the segment lengths in an IK dataframe or series.
 
     :param pd_object: the IK DataFrame or Series
-    :return: dict of bone lengths
+    :return: dict of segment lengths
     """
     return {
         "shoulders": calc_dist_btwn(pd_object, "LSJC", "RSJC"),
@@ -76,7 +78,7 @@ def scale_human_xml(
         boto3_session = boto3.session.Session()
 
     args = {
-        "bone_length_dict": get_bone_lengths(ik_df),
+        "bone_length_dict": get_segment_lengths(ik_df),
         "desired_mass": desired_mass,
         "movement_type": movement_type,
     }
@@ -116,44 +118,61 @@ def get_model_info(
 
 def reorder_joint_angle_df_like_model(
     model: mujoco.MjModel,
-    data: mujoco.MjData,
-    ik_df: pd.DataFrame,
-    joint_angle_names: list[str],
+    input_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Reorder the columns of an IK df to match the order of joints in MuJoCo so its easier to simulate
+    Reorder the columns of an IK df to match the order of joints in MuJoCo so its easier to simulate.
 
     :param model: the MuJoCo model
-    :param data: the MuJoCo data element
-    :param ik_df: the IK dataframe
-    :param joint_angle_names: the joint angle names to order
+    :param input_df: the dataframe to reorder according to the model joint order
     :return: the reordered dataframe
     """
+    if model.nq != model.njnt:
+        raise NotImplementedError(
+            "model n generalized coordinates not equal to n joints "
+            "- possible free joint in mujoco model, which is not supported yet"
+        )
 
-    name_order = [None] * data.qpos.shape[0]
+    name_order = [None] * model.nq
 
-    for joint_angle_name in joint_angle_names:
+    for idx in range(model.njnt):
+
+        joint_angle_name = model.joint(idx).name
 
         q_pos_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_angle_name)
 
-        if q_pos_id >= 0:
-            name_order[model.jnt_qposadr[q_pos_id]] = joint_angle_name
+        if q_pos_id < 0:
+            raise ValueError(
+                f"unrecognized joint_angle_name in mujoco model: {joint_angle_name}"
+            )
 
-    return ik_df[name_order]
+        name_order[model.jnt_qposadr[q_pos_id]] = joint_angle_name
+
+    return input_df[name_order]
 
 
 def inverse_dynamics(
-    mj_model, mj_joint_names, joint_angle_df, dom_hand, col_suffix="invdyn"
-):
+    mj_model: mujoco.MjModel,
+    joint_angle_df: pd.DataFrame,
+    dom_hand: str,
+    col_suffix: str = "invdyn",
+) -> pd.DataFrame:
+    """
+    Run inverse dynamics simulation with MuJoCo model and a dataframe of joint angles.
+
+    :param mj_model: the MuJoCo model
+    :param joint_angle_df: dataframe of joint angles to use for the inverse dynamics simulation
+    :param dom_hand: the dominant hand used in the movement
+    :param col_suffix: suffix to add to column names to distinguish inverse dynamics from inverse kinematics
+    :return:
+    """
 
     mj_data = mujoco.MjData(mj_model)
 
     dt = joint_angle_df["time"].diff().median()
     mj_model.opt.timestep = dt
 
-    positions_df = reorder_joint_angle_df_like_model(
-        mj_model, mj_data, joint_angle_df.copy(), mj_joint_names
-    )
+    positions_df = reorder_joint_angle_df_like_model(mj_model, joint_angle_df.copy())
 
     # for lefties, revert the post-processing negation that was done based on handedness
     if dom_hand.lower().startswith("l"):
@@ -185,11 +204,27 @@ def inverse_dynamics(
         sim_results.append(mj_data.qfrc_inverse.copy())
 
     return pd.DataFrame(
-        data=sim_results, columns=[f"{jn}_{col_suffix}" for jn in mj_joint_names]
+        data=sim_results, columns=[f"{jn}_{col_suffix}" for jn in list(positions_df)]
     )
 
 
-def inverse_dynamics_for_player(player_df, movement_type, player_mass, dom_hand):
+def inverse_dynamics_multiple(
+    player_df: pd.DataFrame,
+    movement_type: str,
+    player_mass: int | float,
+    dom_hand: str,
+    suppress_model_creation_error: bool = False,
+):
+    """
+    Run inverse dynamics simulation for multiple movements for the same player.
+
+    :param player_df: dataframe containing multiple movements for hte same player
+    :param movement_type: the movement type intended for the mujoco simulation
+    :param player_mass: the mass of the player in kg
+    :param dom_hand: the dominant hand used in the movement
+    :param suppress_model_creation_error: whether to return an empty df upon an error in model creation
+    :return: dataframe of inverse dynamics simulation results for multiple movements
+    """
     model_xml_str = scale_human_xml(
         player_df,
         player_mass,
@@ -201,15 +236,15 @@ def inverse_dynamics_for_player(player_df, movement_type, player_mass, dom_hand)
         model = mujoco.MjModel.from_xml_string(model_xml_str)
 
     except ValueError:
-        return pd.DataFrame()
-
-    joint_names = get_model_info(model_xml_str, "joint", return_names=True)
+        if suppress_model_creation_error:
+            return pd.DataFrame()
+        raise
 
     inv_dyn_dfs = []
 
     for org_movement_id, org_movement_df in player_df.groupby("org_movement_id"):
         id_df = inverse_dynamics(
-            model, joint_names, org_movement_df.reset_index(drop=True), dom_hand
+            model, org_movement_df.reset_index(drop=True), dom_hand
         )
         id_df["org_movement_id"] = org_movement_id
         inv_dyn_dfs.append(id_df)

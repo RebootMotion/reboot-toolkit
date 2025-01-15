@@ -17,12 +17,11 @@ import pandas as pd
 import plotly
 import plotly.graph_objects as go
 import pyarrow as pa
-from scipy.signal import savgol_filter
 
 from rapidfuzz import fuzz
 from tqdm import tqdm
 
-from .biomechanics import inverse_dynamics_for_player
+from .biomechanics import inverse_dynamics_multiple
 from .datatypes import (
     PlayerMetadata,
     S3Metadata,
@@ -1253,8 +1252,12 @@ def create_population_dataset(
 
         dom_hand = "r" if player_df["is_right_handed"].mean() > 0 else "l"
 
-        inv_dyn_df = inverse_dynamics_for_player(
-            player_df, movement_type, player_mass, dom_hand
+        inv_dyn_df = inverse_dynamics_multiple(
+            player_df,
+            movement_type,
+            player_mass,
+            dom_hand,
+            suppress_model_creation_error=True,
         )
 
         if not inv_dyn_df.empty:
