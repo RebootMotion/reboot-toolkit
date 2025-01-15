@@ -1273,7 +1273,7 @@ def create_population_dataset(
 def interpolate_df(
     df: pd.DataFrame, time_vals: list, method: str = "cubic"
 ) -> pd.DataFrame:
-    """Interpolate all the columns of a dataframe with the x values as the index, at the input time values"""
+    """Interpolate all the columns of a dataframe along index, returning results at the input time values"""
     return (
         df.reindex(df.index.union(time_vals).unique())
         .interpolate(method=method)
@@ -1287,7 +1287,7 @@ def get_dom_hand_rename_dict(
     """Get a dict that maps right and left column prefixes to dom and nondom"""
 
     if is_right_handed is None:
-        is_right_handed = df["is_right_handed"].iloc[0]
+        is_right_handed = df["is_right_handed"].mean()
 
     if is_right_handed > 0:
         dom = "right"
@@ -1304,12 +1304,25 @@ def get_dom_hand_rename_dict(
     }
 
 
-def get_valid_ids_with_shoulder_rot_vel(df):
+def get_valid_ids_with_shoulder_rot_vel(
+    df: pd.DataFrame, rot_vel_min: float = -10_000, rot_vel_max: float = 15_000
+):
+    """
+    Get the org_movement_id values of a dataframe,
+    where the row has valid shoulder internal rotation velocity values,
+    based on the input rotation velocity min and max.
+
+    :param df: the dataframe for getting valid values
+    :param rot_vel_min: the rotation velocity min
+    :param rot_vel_max: the rotation velocity max
+    :return: the index values with valid shoulder internal rotation velocity values
+    """
+
     shoulder_mins = df.groupby("org_movement_id")["dom_shoulder_rot_vel"].min()
-    ids_valid_min = shoulder_mins.loc[shoulder_mins >= -10_000].index
+    ids_valid_min = shoulder_mins.loc[shoulder_mins >= rot_vel_min].index
 
     shoulder_maxes = df.groupby("org_movement_id")["dom_shoulder_rot_vel"].max()
-    ids_valid_max = shoulder_maxes.loc[shoulder_maxes <= 15_000].index
+    ids_valid_max = shoulder_maxes.loc[shoulder_maxes <= rot_vel_max].index
 
     ids_intersection = ids_valid_min.intersection(ids_valid_max)
     if len(ids_intersection) > 0:
@@ -1318,22 +1331,26 @@ def get_valid_ids_with_shoulder_rot_vel(df):
     return ids_valid_min.union(ids_valid_max).tolist()
 
 
-def calculate_population_means(
+def calculate_population_aggs(
     population_df: pd.DataFrame,
     col_suffixes_to_analyze: list | tuple,
     norm_time_range: np.ndarray | None = None,
     cols_to_interp_at_low_elbow_flex: list | None = None,
     low_elbow_flex_cutoff: float = 30,
-) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
+    do_mean: bool = False,
+    only_valid_shoulder_velos: bool = True,
+) -> pd.DataFrame:
     """
-    Calculate population means and standard deviations.
+    Calculate population data aggregations: medians, 25th percentiles, 75th percentiles, and standard deviations.
 
-    :param population_df: the dataframe for calculating population means and standard deviations
+    :param population_df: the dataframe for calculating population aggregations
     :param col_suffixes_to_analyze: column suffixes to analyze
-    :param norm_time_range: optional norm time range
-    :param cols_to_interp_at_low_elbow_flex: columns to interpolate when elbow flexion is less than a cutoff
-    :param low_elbow_flex_cutoff: the cutoff angle below which columns will be interpolated
-    :return:
+    :param norm_time_range: optional norm time range, if not specified will be a range from -200 to 100
+    :param cols_to_interp_at_low_elbow_flex: columns to interpolate when elbow flexion is less than a cutoff value
+    :param low_elbow_flex_cutoff: the cutoff value angle below which columns will be interpolated
+    :param do_mean: whether to calculate the mean or median
+    :param only_valid_shoulder_velos: whether to filter for only valid shoulder velocity values
+    :return: the aggregated population data
     """
     if not isinstance(col_suffixes_to_analyze, tuple):
         col_suffixes_to_analyze = tuple(col_suffixes_to_analyze)
@@ -1341,7 +1358,7 @@ def calculate_population_means(
     if norm_time_range is None:
         norm_time_range = np.arange(-200, 120)
 
-    median_dfs = []
+    median_mean_dfs = []
     std_dfs = []
     q_25_dfs = []
     q_75_dfs = []
@@ -1375,34 +1392,51 @@ def calculate_population_means(
             .reset_index()
         )
 
-        ids_valid = get_valid_ids_with_shoulder_rot_vel(interped_df)
+        if only_valid_shoulder_velos:
+            ids_valid = get_valid_ids_with_shoulder_rot_vel(interped_df)
+
+        else:
+            ids_valid = interped_df["org_movement_id"].tolist()
 
         grouped_by_nt = interped_df.loc[interped_df["org_movement_id"].isin(ids_valid)][
             ["norm_time"] + cols_to_analyze
         ].groupby("norm_time")
 
-        median_dfs.append(grouped_by_nt.median().reset_index())
+        if do_mean:
+            median_mean_dfs.append(grouped_by_nt.mean().reset_index())
+
+        else:
+            median_mean_dfs.append(grouped_by_nt.median().reset_index())
+
         std_dfs.append(grouped_by_nt.std().reset_index())
         q_25_dfs.append(grouped_by_nt.quantile(0.25).reset_index())
         q_75_dfs.append(grouped_by_nt.quantile(0.75).reset_index())
 
-    median_df = pd.concat(median_dfs).groupby("norm_time").mean()
+    median_mean_df = pd.concat(median_mean_dfs).groupby("norm_time").mean()
     std_df = pd.concat(std_dfs).groupby("norm_time").mean()
     q_25_df = pd.concat(q_25_dfs).groupby("norm_time").mean()
     q_75_df = pd.concat(q_75_dfs).groupby("norm_time").mean()
 
     return (
-        median_df.join(std_df, rsuffix="_std")
+        median_mean_df.join(std_df, rsuffix="_std")
         .join(q_25_df, rsuffix="_25")
         .join(q_75_df, rsuffix="_75")
         .reset_index()
     )
 
 
-def get_rep_id(player_df: pd.DataFrame, cols_to_analyze: list) -> str:
-    """Get a representative org movement ID from a dataframe by finding the ID closes to the maxes and mins."""
+def get_rep_id(
+    player_df: pd.DataFrame,
+    cols_to_analyze: list,
+    only_valid_shoulder_velos: bool = True,
+) -> str:
+    """Get a representative org movement ID from a dataframe by finding the ID closest to the maxes and mins."""
 
-    ids_valid = get_valid_ids_with_shoulder_rot_vel(player_df)
+    if only_valid_shoulder_velos:
+        ids_valid = get_valid_ids_with_shoulder_rot_vel(player_df)
+
+    else:
+        ids_valid = player_df["org_movement_id"].tolist()
 
     available_df = player_df.loc[player_df["org_movement_id"].isin(ids_valid)]
 
@@ -1425,26 +1459,36 @@ def get_rep_id(player_df: pd.DataFrame, cols_to_analyze: list) -> str:
 
 
 def get_rep_df(
-    player_df,
-    cols_to_analyze,
-    norm_time_min,
-    norm_time_max,
+    multiple_df: pd.DataFrame,
+    cols_to_analyze: list[str],
+    norm_time_min: int | float,
+    norm_time_max: int | float,
     cols_to_interp_at_low_elbow_flex: list | None = None,
     low_elbow_flex_cutoff: float = 30,
 ):
-    """Get the representative dataframe."""
+    """
+    Get the dataframe of a representative movement from a dataframe of multiple movements.
 
-    rename_dict = get_dom_hand_rename_dict(player_df)
+    :param multiple_df: dataframe of multiple movements
+    :param cols_to_analyze: cols to use for finding the representative movement
+    :param norm_time_min: the min norm time to return
+    :param norm_time_max: the max norm_time to return
+    :param cols_to_interp_at_low_elbow_flex: columns to interpolate when elbow flexion is less than a cutoff value
+    :param low_elbow_flex_cutoff: the cutoff value angle below which columns will be interpolated
+    :return: the data frame for the representative movement
+    """
+
+    rename_dict = get_dom_hand_rename_dict(multiple_df)
 
     rep_org_movement_id = get_rep_id(
-        player_df.rename(columns=rename_dict), cols_to_analyze
+        multiple_df.rename(columns=rename_dict), cols_to_analyze
     )
 
     rep_df = (
-        player_df.loc[
-            (player_df["org_movement_id"] == rep_org_movement_id)
-            & (player_df["norm_time"] >= norm_time_min)
-            & (player_df["norm_time"] <= norm_time_max)
+        multiple_df.loc[
+            (multiple_df["org_movement_id"] == rep_org_movement_id)
+            & (multiple_df["norm_time"] >= norm_time_min)
+            & (multiple_df["norm_time"] <= norm_time_max)
         ]
         .reset_index(drop=True)
         .rename(columns=rename_dict)
@@ -1453,7 +1497,7 @@ def get_rep_df(
 
     if cols_to_interp_at_low_elbow_flex:
         rep_df.loc[
-            (rep_df["norm_time"] < 0) & (rep_df["dom_elbow"] < 30),
+            (rep_df["norm_time"] < 0) & (rep_df["dom_elbow"] < low_elbow_flex_cutoff),
             cols_to_interp_at_low_elbow_flex,
         ] = np.nan
 
