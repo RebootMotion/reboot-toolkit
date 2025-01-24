@@ -218,7 +218,7 @@ def inverse_dynamics_multiple(
     """
     Run inverse dynamics simulation for multiple movements for the same player.
 
-    :param player_df: dataframe containing multiple movements for hte same player
+    :param player_df: dataframe containing multiple movements for the same player
     :param movement_type: the movement type intended for the mujoco simulation
     :param player_mass: the mass of the player in kg
     :param dom_hand: the dominant hand used in the movement
