@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -60,8 +62,8 @@ class S3Metadata:
     org_id: str
     mocap_types: list[MocapType]
     movement_type: MovementType
-    handedness: Handedness
-    file_type: FileType
+    handedness: Handedness | None = None
+    file_type: FileType | None = None
 
     @property
     def bucket(self) -> str:

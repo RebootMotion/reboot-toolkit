@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import random
 
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
@@ -20,6 +21,7 @@ import pyarrow as pa
 from rapidfuzz import fuzz
 from tqdm import tqdm
 
+from .biomechanics import inverse_dynamics_multiple
 from .datatypes import (
     PlayerMetadata,
     S3Metadata,
@@ -27,6 +29,7 @@ from .datatypes import (
     MovementType,
     DataType,
 )
+from .inverse_kinematics import add_ik_cols
 from .reboot_motion_api import RebootClient
 from .utils import handle_lambda_invocation
 
@@ -361,6 +364,27 @@ def list_available_s3_keys(org_id: str, df: pd.DataFrame) -> list[str]:
     return all_files
 
 
+def set_is_right_handed(df: pd.DataFrame):
+    """Create a column on a dataframe "is_right_handed", where +1 is right and -1 is left."""
+    df["left_minus_right"] = df["LAJC_Y"] - df["RAJC_Y"]
+
+    df["percent_stride"] = df["left_minus_right"].copy().abs()
+
+    df["percent_stride"] = df.groupby("org_movement_id")["percent_stride"].transform(
+        "rank", pct=True
+    )
+    df["percent_stride"] = np.where(df["percent_stride"] > 0.9, 1, np.nan)
+
+    df["left_minus_right"] = df["left_minus_right"] * df["percent_stride"]
+    df["left_minus_right"] = np.sign(
+        df.groupby("org_movement_id")["left_minus_right"].transform("median")
+    ).astype("Int64")
+
+    df.rename(columns={"left_minus_right": "is_right_handed"}, inplace=True)
+
+    df.drop(columns=["percent_stride"], inplace=True)
+
+
 def load_games_to_df_from_s3_paths(
     game_paths: list[str],
     add_ik_joints: bool = False,
@@ -507,37 +531,11 @@ def load_games_to_df_from_s3_paths(
 
             if add_ik_joints:
                 if "time" in current_game.columns:
-                    for coord in ("X", "Y", "Z"):
-                        current_game[f"neck_{coord}"] = (
-                            current_game[f"LSJC_{coord}"]
-                            + current_game[f"RSJC_{coord}"]
-                        ) / 2.0
-
-                        current_game[f"pelvis_{coord}"] = (
-                            current_game[f"LHJC_{coord}"]
-                            + current_game[f"RHJC_{coord}"]
-                        ) / 2.0
-
-                        current_game[f"torso_{coord}"] = current_game[f"pelvis_{coord}"]
-
-                        current_game[f"{coord.lower()}_translation"] = current_game[
-                            f"pelvis_{coord}"
-                        ]
-
-                    if "Basketball_X" in current_game.columns:
-                        current_game = current_game.rename(
-                            columns={
-                                "Basketball_X": "x_ball_translation",
-                                "Basketball_Y": "y_ball_translation",
-                                "Basketball_Z": "z_ball_translation",
-                            }
-                        )
-
-                    # set the target joint angle for the elbow varus valgus degree of freedom
-                    if add_elbow_var_val:
-                        current_game["right_elbow_var"] = 0
-
-                        current_game["left_elbow_var"] = 0
+                    add_ik_cols(
+                        current_game,
+                        add_translation=True,
+                        add_elbow_var_val=add_elbow_var_val,
+                    )
 
                     ik_status = "Added IK joints"
 
@@ -608,15 +606,17 @@ def load_data_into_analysis_dict(
     print("Loading into dict player metadata:", player_metadata)
 
     analysis_dict = {
-        "player_id": player_metadata.org_player_ids[0]
-        if player_metadata.org_player_ids
-        else None,
-        "session_date": player_metadata.session_dates[0]
-        if player_metadata.session_dates
-        else None,
-        "game_pk": player_metadata.session_nums[0]
-        if player_metadata.session_nums
-        else None,
+        "player_id": (
+            player_metadata.org_player_ids[0]
+            if player_metadata.org_player_ids
+            else None
+        ),
+        "session_date": (
+            player_metadata.session_dates[0] if player_metadata.session_dates else None
+        ),
+        "game_pk": (
+            player_metadata.session_nums[0] if player_metadata.session_nums else None
+        ),
         "play_guid": player_metadata.org_movement_id,
         "s3_prefix": player_metadata.s3_prefix,
         "eye_hand_multiplier": player_metadata.s3_metadata.handedness.eye_hand_multiplier,
@@ -1132,3 +1132,380 @@ def add_offsets_from_metadata(
     data_df.drop(columns=offset_cols, inplace=True)
 
     return data_df
+
+
+def random_sample_with_desired_items(
+    full_list: list, desired_items_list: list, count_items: int
+) -> list:
+    """
+    Get a random sample form a list that includes the desired items.
+
+    :param full_list: the full list of items to sample from
+    :param desired_items_list: the items desired to be present in the final list
+    :param count_items: the max length of the final list
+    :return: the sampled list
+    """
+
+    desired_items = set(desired_items_list)
+
+    extra_items = set(full_list) - desired_items
+
+    if (count_items < 0) or ((len(extra_items) + len(desired_items)) <= count_items):
+        return list(extra_items) + list(desired_items)
+
+    return list(random.sample(extra_items, count_items - len(desired_items))) + list(
+        desired_items
+    )
+
+
+def create_population_dataset(
+    s3_df: pd.DataFrame,
+    movement_type: str,
+    session_dates_to_analyze: list | None = None,
+    org_player_ids_to_analyze: list | None = None,
+    count_sessions: int = -1,
+    count_orgs_players: int = -1,
+    count_movements: int = -1,
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """
+    Create a population dataset of inverse kinematics and inverse dynamics data from an s3 summary dataframe.
+
+    :param s3_df: the s3 summary dataframe
+    :param movement_type: the movement type to analyze
+    :param session_dates_to_analyze: optional list of session dates to analyze
+    :param org_player_ids_to_analyze: optional list of org player IDs to analyze
+    :param count_sessions: maximum number of sessions to analyze
+    :param count_orgs_players: maximum number of org players to analyze
+    :param count_movements: maximum number of movements to analyze
+    :param verbose: whether to print status
+    :return: dataframe of inverse kinematics and inverse dynamics data
+    """
+    if session_dates_to_analyze is None:
+        session_dates_to_analyze = []
+
+    if org_player_ids_to_analyze is None:
+        org_player_ids_to_analyze = []
+
+    session_dates = random_sample_with_desired_items(
+        s3_df["session_date"].tolist(),
+        [pd.to_datetime(sd) for sd in session_dates_to_analyze],
+        count_sessions,
+    )
+
+    sample_df = s3_df.loc[
+        (s3_df["movement_type"] == movement_type)
+        & s3_df["session_date"].isin(session_dates)
+    ]
+
+    org_player_ids = random_sample_with_desired_items(
+        sample_df["org_player_id"].tolist(),
+        org_player_ids_to_analyze,
+        count_orgs_players,
+    )
+
+    s3_df_orgs_players = sample_df.loc[sample_df["org_player_id"].isin(org_player_ids)]
+
+    all_dfs = []
+
+    for org_player_id, org_player_df in tqdm(
+        s3_df_orgs_players.groupby("org_player_id"),
+        desc="downloading player data:",
+        total=len(org_player_ids),
+        disable=not verbose,
+    ):
+        player_session_paths = org_player_df["s3_path_delivery"].tolist()
+
+        player_mass = org_player_df["weight_lbs"].mean() * 0.453592  # lbs to kgs
+
+        player_dfs = []
+
+        for player_session_path in player_session_paths:
+
+            session_ik_paths = wr.s3.list_objects(player_session_path)
+            if (count_movements > 0) and (len(session_ik_paths) > count_movements):
+                session_ik_paths = random.sample(session_ik_paths, count_movements)
+
+            try:
+                ik_df = wr.s3.read_csv(session_ik_paths, use_threads=True).rename(
+                    columns={"Unnamed: 0": "frame"}
+                )
+            except wr.exceptions.NoFilesFound:
+                continue
+
+            player_dfs.append(ik_df)
+
+        if not player_dfs:
+            continue
+
+        player_df = pd.concat(player_dfs)
+
+        add_ik_cols(
+            player_df,
+            add_translation=True,
+            add_elbow_var_val=True,
+        )
+
+        player_df["org_player_id"] = org_player_id
+
+        set_is_right_handed(player_df)
+
+        dom_hand = "r" if player_df["is_right_handed"].mean() > 0 else "l"
+
+        inv_dyn_df = inverse_dynamics_multiple(
+            player_df,
+            movement_type,
+            player_mass,
+            dom_hand,
+            suppress_model_creation_error=True,
+        )
+
+        if not inv_dyn_df.empty:
+            player_df = player_df.merge(
+                inv_dyn_df, on=["org_movement_id", "frame"]
+            ).dropna(axis="columns", how="all")
+
+        all_dfs.append(player_df)
+
+    return pd.concat(all_dfs, ignore_index=True)
+
+
+def interpolate_df(
+    df: pd.DataFrame, time_vals: list, method: str = "cubic"
+) -> pd.DataFrame:
+    """Interpolate all the columns of a dataframe along index, returning results at the input time values"""
+    return (
+        df.reindex(df.index.union(time_vals).unique())
+        .interpolate(method=method)
+        .loc[time_vals]
+    )
+
+
+def get_dom_hand_rename_dict(
+    df: pd.DataFrame, is_right_handed: int | None = None
+) -> dict:
+    """Get a dict that maps right and left column prefixes to dom and nondom"""
+
+    if is_right_handed is None:
+        is_right_handed = df["is_right_handed"].mean()
+
+    if is_right_handed > 0:
+        dom = "right"
+        non_dom = "left"
+
+    else:
+        dom = "left"
+        non_dom = "right"
+
+    return {col: col.replace(dom, "dom") for col in list(df) if col.startswith(dom)} | {
+        col: col.replace(non_dom, "nondom")
+        for col in list(df)
+        if col.startswith(non_dom)
+    }
+
+
+def get_valid_ids_with_shoulder_rot_vel(
+    df: pd.DataFrame, rot_vel_min: float = -10_000, rot_vel_max: float = 15_000
+):
+    """
+    Get the org_movement_id values of a dataframe,
+    where the row has valid shoulder internal rotation velocity values,
+    based on the input rotation velocity min and max.
+
+    :param df: the dataframe for getting valid values
+    :param rot_vel_min: the rotation velocity min
+    :param rot_vel_max: the rotation velocity max
+    :return: the index values with valid shoulder internal rotation velocity values
+    """
+
+    shoulder_mins = df.groupby("org_movement_id")["dom_shoulder_rot_vel"].min()
+    ids_valid_min = shoulder_mins.loc[shoulder_mins >= rot_vel_min].index
+
+    shoulder_maxes = df.groupby("org_movement_id")["dom_shoulder_rot_vel"].max()
+    ids_valid_max = shoulder_maxes.loc[shoulder_maxes <= rot_vel_max].index
+
+    ids_intersection = ids_valid_min.intersection(ids_valid_max)
+    if len(ids_intersection) > 0:
+        return ids_intersection.tolist()
+
+    return ids_valid_min.union(ids_valid_max).tolist()
+
+
+def calculate_population_aggs(
+    population_df: pd.DataFrame,
+    col_suffixes_to_analyze: list | tuple,
+    norm_time_range: np.ndarray | None = None,
+    cols_to_interp_at_low_elbow_flex: list | None = None,
+    low_elbow_flex_cutoff: float = 30,
+    do_mean: bool = False,
+    only_valid_shoulder_velos: bool = True,
+) -> pd.DataFrame:
+    """
+    Calculate population data aggregations: medians, 25th percentiles, 75th percentiles, and standard deviations.
+
+    :param population_df: the dataframe for calculating population aggregations
+    :param col_suffixes_to_analyze: column suffixes to analyze
+    :param norm_time_range: optional norm time range, if not specified will be a range from -200 to 100
+    :param cols_to_interp_at_low_elbow_flex: columns to interpolate when elbow flexion is less than a cutoff value
+    :param low_elbow_flex_cutoff: the cutoff value angle below which columns will be interpolated
+    :param do_mean: whether to calculate the mean or median
+    :param only_valid_shoulder_velos: whether to filter for only valid shoulder velocity values
+    :return: the aggregated population data
+    """
+    if not isinstance(col_suffixes_to_analyze, tuple):
+        col_suffixes_to_analyze = tuple(col_suffixes_to_analyze)
+
+    if norm_time_range is None:
+        norm_time_range = np.arange(-200, 120)
+
+    median_mean_dfs = []
+    std_dfs = []
+    q_25_dfs = []
+    q_75_dfs = []
+
+    for handedness, hand_df in population_df.groupby("is_right_handed"):
+
+        hand_df.drop_duplicates(
+            subset=["org_player_id", "org_movement_id", "norm_time"], inplace=True
+        )
+
+        dom_hand_rename_dict = get_dom_hand_rename_dict(hand_df, handedness)
+
+        hand_df.rename(columns=dom_hand_rename_dict, inplace=True)
+
+        cols_to_analyze = [
+            c for c in hand_df.columns if c.endswith(col_suffixes_to_analyze)
+        ]
+
+        if cols_to_interp_at_low_elbow_flex:
+            hand_df.loc[
+                (hand_df["norm_time"] < 0)
+                & (hand_df["dom_elbow"] < low_elbow_flex_cutoff),
+                cols_to_interp_at_low_elbow_flex,
+            ] = np.nan
+
+        interped_df = (
+            hand_df[["norm_time", "org_player_id", "org_movement_id"] + cols_to_analyze]
+            .set_index("norm_time")
+            .groupby(["org_player_id", "org_movement_id"])
+            .apply(interpolate_df, time_vals=norm_time_range, include_groups=False)
+            .reset_index()
+        )
+
+        if only_valid_shoulder_velos:
+            ids_valid = get_valid_ids_with_shoulder_rot_vel(interped_df)
+
+        else:
+            ids_valid = interped_df["org_movement_id"].tolist()
+
+        grouped_by_nt = interped_df.loc[interped_df["org_movement_id"].isin(ids_valid)][
+            ["norm_time"] + cols_to_analyze
+        ].groupby("norm_time")
+
+        if do_mean:
+            median_mean_dfs.append(grouped_by_nt.mean().reset_index())
+
+        else:
+            median_mean_dfs.append(grouped_by_nt.median().reset_index())
+
+        std_dfs.append(grouped_by_nt.std().reset_index())
+        q_25_dfs.append(grouped_by_nt.quantile(0.25).reset_index())
+        q_75_dfs.append(grouped_by_nt.quantile(0.75).reset_index())
+
+    median_mean_df = pd.concat(median_mean_dfs).groupby("norm_time").mean()
+    std_df = pd.concat(std_dfs).groupby("norm_time").mean()
+    q_25_df = pd.concat(q_25_dfs).groupby("norm_time").mean()
+    q_75_df = pd.concat(q_75_dfs).groupby("norm_time").mean()
+
+    return (
+        median_mean_df.join(std_df, rsuffix="_std")
+        .join(q_25_df, rsuffix="_25")
+        .join(q_75_df, rsuffix="_75")
+        .reset_index()
+    )
+
+
+def get_rep_id(
+    player_df: pd.DataFrame,
+    cols_to_analyze: list,
+    only_valid_shoulder_velos: bool = True,
+) -> str:
+    """Get a representative org movement ID from a dataframe by finding the ID closest to the maxes and mins."""
+
+    if only_valid_shoulder_velos:
+        ids_valid = get_valid_ids_with_shoulder_rot_vel(player_df)
+
+    else:
+        ids_valid = player_df["org_movement_id"].tolist()
+
+    available_df = player_df.loc[player_df["org_movement_id"].isin(ids_valid)]
+
+    available_grouped = available_df.groupby("org_movement_id")
+
+    player_means = available_grouped[cols_to_analyze].mean()
+    player_maxes = available_grouped[cols_to_analyze].max()
+    player_mins = available_grouped[cols_to_analyze].min()
+
+    return (
+        (
+            ((player_means - player_means.median()) / player_means.std())
+            + ((player_maxes - player_maxes.median()) / player_maxes.std())
+            + ((player_mins - player_mins.median()) / player_mins.std())
+        )
+        .sum(axis=1)
+        .abs()
+        .idxmin()
+    )
+
+
+def get_rep_df(
+    multiple_df: pd.DataFrame,
+    cols_to_analyze: list[str],
+    norm_time_min: int | float,
+    norm_time_max: int | float,
+    cols_to_interp_at_low_elbow_flex: list | None = None,
+    low_elbow_flex_cutoff: float = 30,
+):
+    """
+    Get the dataframe of a representative movement from a dataframe of multiple movements.
+
+    :param multiple_df: dataframe of multiple movements
+    :param cols_to_analyze: cols to use for finding the representative movement
+    :param norm_time_min: the min norm time to return
+    :param norm_time_max: the max norm_time to return
+    :param cols_to_interp_at_low_elbow_flex: columns to interpolate when elbow flexion is less than a cutoff value
+    :param low_elbow_flex_cutoff: the cutoff value angle below which columns will be interpolated
+    :return: the data frame for the representative movement
+    """
+
+    rename_dict = get_dom_hand_rename_dict(multiple_df)
+
+    rep_org_movement_id = get_rep_id(
+        multiple_df.rename(columns=rename_dict), cols_to_analyze
+    )
+
+    rep_df = (
+        multiple_df.loc[
+            (multiple_df["org_movement_id"] == rep_org_movement_id)
+            & (multiple_df["norm_time"] >= norm_time_min)
+            & (multiple_df["norm_time"] <= norm_time_max)
+        ]
+        .reset_index(drop=True)
+        .rename(columns=rename_dict)
+        .copy()
+    )
+
+    if cols_to_interp_at_low_elbow_flex:
+        rep_df.loc[
+            (rep_df["norm_time"] < 0) & (rep_df["dom_elbow"] < low_elbow_flex_cutoff),
+            cols_to_interp_at_low_elbow_flex,
+        ] = np.nan
+
+        rep_df[cols_to_interp_at_low_elbow_flex] = (
+            rep_df[["norm_time"] + cols_to_interp_at_low_elbow_flex]
+            .set_index("norm_time")
+            .interpolate(method="quadratic")
+            .to_numpy()
+        )
+
+    return rep_df

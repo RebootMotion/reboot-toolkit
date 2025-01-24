@@ -24,17 +24,43 @@ logger = logging.getLogger(__name__)
 logger.setLevel(get_log_level())
 
 
-def add_ik_cols(trc_df):
+def add_ik_cols(
+    ik_df: pd.DataFrame, add_translation: bool = False, add_elbow_var_val: bool = False
+) -> None:
+    """
+    Add columns needed for certain inverse kinematics calculations.
+
+    :param ik_df: the base df for adding columns
+    :param add_translation: whether to add translation columns
+    :param add_elbow_var_val: whether to add elbow var val columns
+    """
+
     for coord in ("X", "Y", "Z"):
-        trc_df[f"neck_{coord}"] = (
-            trc_df[f"LSJC_{coord}"] + trc_df[f"RSJC_{coord}"]
+        ik_df[f"neck_{coord}"] = (ik_df[f"LSJC_{coord}"] + ik_df[f"RSJC_{coord}"]) / 2.0
+
+        ik_df[f"pelvis_{coord}"] = (
+            ik_df[f"LHJC_{coord}"] + ik_df[f"RHJC_{coord}"]
         ) / 2.0
 
-        trc_df[f"pelvis_{coord}"] = (
-            trc_df[f"LHJC_{coord}"] + trc_df[f"RHJC_{coord}"]
-        ) / 2.0
+        ik_df[f"torso_{coord}"] = ik_df[f"pelvis_{coord}"]
 
-        trc_df[f"torso_{coord}"] = trc_df[f"pelvis_{coord}"]
+        if add_translation:
+            ik_df[f"{coord.lower()}_translation"] = ik_df[f"pelvis_{coord}"]
+
+        if "Basketball_X" in ik_df.columns:
+            ik_df.rename(
+                columns={
+                    "Basketball_X": "x_ball_translation",
+                    "Basketball_Y": "y_ball_translation",
+                    "Basketball_Z": "z_ball_translation",
+                },
+                inplace=True,
+            )
+
+    # set the target joint angle for the elbow varus valgus degree of freedom
+    if add_elbow_var_val:
+        ik_df["right_elbow_var"] = 0
+        ik_df["left_elbow_var"] = 0
 
 
 def read_trc(in_file_name: str) -> pd.DataFrame:
