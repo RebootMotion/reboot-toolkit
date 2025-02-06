@@ -82,8 +82,8 @@ class S3Metadata:
     @property
     def s3_population_prefix(self) -> str:
         return (
-            f"s3://{self.bucket}/population/{self.mocap_type}/{self.movement_type}/"
-            f"{self.file_type}/000000_{self.movement_type}_{self.handedness}_"
+            f"s3://{self.bucket}/population/{self.mocap_type.value}/{self.movement_type.value}/"
+            f"{self.file_type.value}/000000_{self.movement_type.value}_{self.handedness.value}_"
         )
 
 
@@ -115,9 +115,9 @@ class PlayerMetadata:
 
                 mocap_type = self.s3_metadata.mocap_types[0]
                 return (
-                    f"s3://reboot-motion-{self.s3_metadata.org_id}/data_delivery/{mocap_type}/"
-                    f"{self.session_dates[0]}/{self.session_nums[0]}/{self.s3_metadata.movement_type}/"
-                    f"{self.org_player_ids[0]}/{self.s3_metadata.file_type}/"
+                    f"s3://reboot-motion-{self.s3_metadata.org_id}/data_delivery/{mocap_type.value}/"
+                    f"{self.session_dates[0]}/{self.session_nums[0]}/{self.s3_metadata.movement_type.value}/"
+                    f"{self.org_player_ids[0]}/{self.s3_metadata.file_type.value}/"
                 )
 
         print("Unable to construct path with input parameters")
