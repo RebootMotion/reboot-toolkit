@@ -115,9 +115,9 @@ class PlayerMetadata:
 
                 mocap_type = self.s3_metadata.mocap_types[0]
                 return (
-                    f"s3://reboot-motion-{self.s3_metadata.org_id}/data_delivery/{mocap_type}/"
-                    f"{self.session_dates[0]}/{self.session_nums[0]}/{self.s3_metadata.movement_type}/"
-                    f"{self.org_player_ids[0]}/{self.s3_metadata.file_type}/"
+                    f"s3://reboot-motion-{self.s3_metadata.org_id}/data_delivery/{mocap_type.value}/"
+                    f"{self.session_dates[0]}/{self.session_nums[0]}/{self.s3_metadata.movement_type.value}/"
+                    f"{self.org_player_ids[0]}/{self.s3_metadata.file_type.value}/"
                 )
 
         print("Unable to construct path with input parameters")
