@@ -82,8 +82,8 @@ class S3Metadata:
     @property
     def s3_population_prefix(self) -> str:
         return (
-            f"s3://{self.bucket}/population/{self.mocap_type}/{self.movement_type}/"
-            f"{self.file_type}/000000_{self.movement_type}_{self.handedness}_"
+            f"s3://{self.bucket}/population/{self.mocap_type.value}/{self.movement_type.value}/"
+            f"{self.file_type.value}/000000_{self.movement_type.value}_{self.handedness.value}_"
         )
 
 
