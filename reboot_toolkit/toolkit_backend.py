@@ -28,6 +28,7 @@ from .datatypes import (
     MOVEMENT_TYPE_IDS_MAP,
     MovementType,
     DataType,
+    get_s3_bucket,
 )
 from .inverse_kinematics import add_ik_cols
 from .reboot_motion_api import RebootClient
@@ -228,6 +229,9 @@ def download_s3_summary_df(
     """
     s3_summary_df = None
     status_local = "Not saving summary dataframe locally"
+    s3_bucket = s3_metadata.bucket
+    if not s3_bucket:
+        raise RuntimeError("s3 bucket must be set")
 
     if save_local:
         try:
@@ -240,7 +244,7 @@ def download_s3_summary_df(
 
     if s3_summary_df is None:
         s3_summary_df = wr.s3.read_csv(
-            [f"s3://reboot-motion-{s3_metadata.org_id}/population/s3_summary.csv"],
+            [f"s3://{s3_bucket}/population/s3_summary.csv"],
             index_col=[0],
         )
 
@@ -252,6 +256,9 @@ def download_s3_summary_df(
         s3_summary_df["s3_path_delivery"] = (
             s3_summary_df["s3_path_delivery"] + s3_metadata.file_type.value
         )
+
+    # replace reboot org bucket with s3_bucket variable
+    s3_summary_df["s3_path_delivery"] = s3_summary_df["s3_path_delivery"].replace("reboot-motion-org-[a-z0-9]*", s3_bucket, regex=True)
 
     s3_summary_df["org_player_id"] = s3_summary_df["org_player_id"].astype("string")
 
@@ -342,17 +349,17 @@ def list_available_s3_keys(org_id: str, df: pd.DataFrame) -> list[str]:
     :param df: the dataframe with a column of s3_path_delivery values
     :return: list of all available s3 file paths
     """
+    if not org_id:
+        raise RuntimeError("An org_id is required")
     s3_client = boto3.Session().client("s3")
-
-    bucket = f"reboot-motion-{org_id}"
-
+    s3_bucket = get_s3_bucket(org_id=org_id)
     all_files = []
 
     for s3_path_delivery in df["s3_path_delivery"]:
         print("s3 base path:", s3_path_delivery)
 
         key_prefix = "/".join(s3_path_delivery.split("s3://")[-1].split("/")[1:])
-        objs = s3_client.list_objects_v2(Bucket=bucket, Prefix=key_prefix)
+        objs = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix=key_prefix)
 
         s3_files = sorted([obj["Key"] for obj in objs.get("Contents", [])])
         print("available s3 files:")
