@@ -3,6 +3,25 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
+import os
+from functools import cached_property
+
+
+def get_s3_bucket(org_id: Optional[str] = None) -> Optional[str]:
+    """
+    Get the S3 bucket from environment variable REBOOT_S3_BUCKET.
+    If that isn't available and org_id is provided, return the reboot motion-provided bucket.
+    If org_id is not provided, check environment variable ORG_ID for the org id.
+    If org_id is still unavailalbe, return None.
+    """
+    if reboot_s3_bucket := os.getenv("REBOOT_S3_BUCKET"):
+        return reboot_s3_bucket
+    elif org_id:
+        return f"reboot-motion-{org_id}"
+    elif org_id := os.getenv("ORG_ID"):
+        return f"reboot-motion-{org_id}"
+    else:
+        return None
 
 
 class MocapType(str, Enum):
@@ -65,9 +84,12 @@ class S3Metadata:
     handedness: Handedness | None = None
     file_type: FileType | None = None
 
-    @property
+    @cached_property
     def bucket(self) -> str:
-        return f"reboot-motion-{self.org_id}"
+        s3_bucket = get_s3_bucket(org_id=self.org_id)
+        if s3_bucket is None:
+            raise RuntimeError(f"s3 bucket must be set thru REBOOT_S3_BUCKET environment variable or by providing an org_id to S3Metadata")
+        return s3_bucket
 
     @property
     def mocap_type(self) -> str:
@@ -114,11 +136,10 @@ class PlayerMetadata:
                     )
 
                 mocap_type = self.s3_metadata.mocap_types[0]
-                return (
-                    f"s3://reboot-motion-{self.s3_metadata.org_id}/data_delivery/{mocap_type.value}/"
-                    f"{self.session_dates[0]}/{self.session_nums[0]}/{self.s3_metadata.movement_type.value}/"
-                    f"{self.org_player_ids[0]}/{self.s3_metadata.file_type.value}/"
-                )
+
+                return f's3://{self.s3_metadata.bucket}/data_delivery/{mocap_type.value}/' \
+                       f'{self.session_dates[0]}/{self.session_nums[0]}/{self.s3_metadata.movement_type.value}/' \
+                       f'{self.org_player_ids[0]}/{self.s3_metadata.file_type}/'
 
         print("Unable to construct path with input parameters")
 
