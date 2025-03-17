@@ -1221,15 +1221,14 @@ def create_population_dataset(
         total=len(org_player_ids),
         disable=not verbose,
     ):
-        player_session_paths = org_player_df["s3_path_delivery"].tolist()
-
         player_mass = org_player_df["weight_lbs"].mean() * 0.453592  # lbs to kgs
 
         player_dfs = []
 
-        for player_session_path in player_session_paths:
+        for row in org_player_df.itertuples():
 
-            session_ik_paths = wr.s3.list_objects(player_session_path)
+            session_ik_paths = wr.s3.list_objects(row.s3_path_delivery)
+
             if (count_movements > 0) and (len(session_ik_paths) > count_movements):
                 session_ik_paths = random.sample(session_ik_paths, count_movements)
 
@@ -1237,8 +1236,12 @@ def create_population_dataset(
                 ik_df = wr.s3.read_csv(session_ik_paths, use_threads=True).rename(
                     columns={"Unnamed: 0": "frame"}
                 )
+
             except wr.exceptions.NoFilesFound:
                 continue
+
+            ik_df["session_date"] = row.session_date
+            ik_df["session_num"] = row.session_num
 
             player_dfs.append(ik_df)
 

@@ -1,11 +1,11 @@
-awswrangler<3.9.0
+awswrangler<3.12.0
 boto3<2.0.0
 IPython<9.0.0
 ipywidgets<9.0.0
 matplotlib<4.0.0
 mlb_statsapi@git+https://github.com/RebootMotion/mlb-statsapi.git@v1.2.0
 mujoco<4.0.0
-numpy<2.0.0
+numpy<3.0.0
 pandas<3.0.0
 pyarrow<17.0.0
 plotly<6.0.0
