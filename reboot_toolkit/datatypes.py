@@ -34,11 +34,10 @@ class MovementType(str, Enum):
     BASEBALL_PITCHING = "baseball-pitching"
     BASEBALL_HITTING = "baseball-hitting"
     BASKETBALL_SHOOTING = "basketball-shooting"
-    VERTICAL_JUMPING = 'vertical-jumping'
-    SQUATTING = 'squatting'
-    LUNGING = 'lunging'
-    LEG_RAISING = 'leg-raising'
-
+    VERTICAL_JUMPING = "vertical-jumping"
+    SQUATTING = "squatting"
+    LUNGING = "lunging"
+    LEG_RAISING = "leg-raising"
 
 
 MOVEMENT_TYPE_IDS_MAP = {
@@ -64,12 +63,26 @@ class FileType(str, Enum):
     MOMENTUM_ENERGY = "momentum-energy"
     HITTING_CALCULATED_SERIES = "hitting-processed-series"
     HITTING_CALCULATED_METRICS = "hitting-processed-metrics"
+    HITTING_LITE_CALCULATED_SERIES = "hitting-lite-processed-series"
+    HITTING_LITE_CALCULATED_METRICS = "hitting-lite-processed-metrics"
     METRICS_BASEBALL_PITCHING_V1 = "metrics-baseball-pitching-v1-0-0"
     METRICS_BASEBALL_PITCHING_V2 = "metrics-baseball-pitching-v2-0-0"
     METRICS_BASEBALL_PITCHING_V_ALL = "metrics-baseball-pitching"
     METRICS_BASEBALL_HITTING_V1 = "metrics-baseball-hitting-v1-0-0"
     METRICS_BASEBALL_HITTING_V2 = "metrics-baseball-hitting-v2-0-0"
     METRICS_BASEBALL_HITTING_V_ALL = "metrics-baseball-hitting"
+
+
+HITTING_SERIES_TYPES = (
+    FileType.HITTING_CALCULATED_SERIES.value,
+    FileType.HITTING_LITE_CALCULATED_SERIES.value,
+)
+
+
+HITTING_METRICS_TYPES = (
+    FileType.HITTING_CALCULATED_METRICS.value,
+    FileType.HITTING_LITE_CALCULATED_METRICS.value,
+)
 
 
 class DataType(str, Enum):
@@ -88,7 +101,9 @@ class S3Metadata:
     def bucket(self) -> str:
         s3_bucket = get_s3_bucket(org_id=self.org_id)
         if s3_bucket is None:
-            raise RuntimeError(f"s3 bucket must be set thru REBOOT_S3_BUCKET environment variable or by providing an org_id to S3Metadata")
+            raise RuntimeError(
+                f"s3 bucket must be set thru REBOOT_S3_BUCKET environment variable or by providing an org_id to S3Metadata"
+            )
         return s3_bucket
 
     @property
@@ -137,9 +152,11 @@ class PlayerMetadata:
 
                 mocap_type = self.s3_metadata.mocap_types[0]
 
-                return f's3://{self.s3_metadata.bucket}/data_delivery/{mocap_type.value}/' \
-                       f'{self.session_dates[0]}/{self.session_nums[0]}/{self.s3_metadata.movement_type.value}/' \
-                       f'{self.org_player_ids[0]}/{self.s3_metadata.file_type}/'
+                return (
+                    f"s3://{self.s3_metadata.bucket}/data_delivery/{mocap_type.value}/"
+                    f"{self.session_dates[0]}/{self.session_nums[0]}/{self.s3_metadata.movement_type.value}/"
+                    f"{self.org_player_ids[0]}/{self.s3_metadata.file_type}/"
+                )
 
         print("Unable to construct path with input parameters")
 
