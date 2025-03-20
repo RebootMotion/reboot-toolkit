@@ -518,6 +518,12 @@ def load_games_to_df_from_s3_paths(
                         game_path, index_col=[0], use_threads=True
                     ).dropna(axis=1, how="all")
 
+            org_player_id = (
+                game_path.split("/")[-3]
+                if game_path.endswith("/")
+                else game_path.split("/")[-2]
+            )
+
             supported_mocap_types = [mocap_type.value for mocap_type in MocapType]
 
             session_date_idx_list = [
@@ -528,7 +534,9 @@ def load_games_to_df_from_s3_paths(
             session_date_str = game_path.split("/")[session_date_idx_list[0]]
             current_game["session_date"] = pd.to_datetime(session_date_str)
 
-            used_words = set(supported_mocap_types + [session_date_str])
+            used_words = set(
+                [org_player_id] + supported_mocap_types + [session_date_str]
+            )
             session_num_idx_list = [
                 i
                 for i, s in enumerate(game_path.split("/"))

@@ -102,7 +102,7 @@ class S3Metadata:
         s3_bucket = get_s3_bucket(org_id=self.org_id)
         if s3_bucket is None:
             raise RuntimeError(
-                f"s3 bucket must be set thru REBOOT_S3_BUCKET environment variable or by providing an org_id to S3Metadata"
+                "s3 bucket must be set thru REBOOT_S3_BUCKET environment variable or by providing an org_id to S3Metadata"
             )
         return s3_bucket
 
