@@ -28,6 +28,7 @@ from .datatypes import (
     MOVEMENT_TYPE_IDS_MAP,
     MocapType,
     MovementType,
+    FileType,
     DataType,
     HITTING_SERIES_TYPES,
     HITTING_METRICS_TYPES,
@@ -251,11 +252,21 @@ def download_s3_summary_df(
             index_col=[0],
         )
 
-    if (
-        not s3_summary_df["s3_path_delivery"]
-        .iloc[0]
-        .endswith(s3_metadata.file_type.value)
-    ):
+    delivery_path_example = s3_summary_df["s3_path_delivery"].dropna().iloc[0]
+    available_file_types = tuple(ftype.value for ftype in FileType)
+
+    if delivery_path_example.endswith(available_file_types):
+        if not delivery_path_example.endswith(s3_metadata.file_type.value):
+            current_file_type = next(
+                ftype
+                for ftype in available_file_types
+                if ftype in delivery_path_example
+            )
+            s3_summary_df["s3_path_delivery"] = s3_summary_df[
+                "s3_path_delivery"
+            ].str.replace(current_file_type, s3_metadata.file_type.value)
+
+    else:
         s3_summary_df["s3_path_delivery"] = (
             s3_summary_df["s3_path_delivery"] + s3_metadata.file_type.value
         )
@@ -401,7 +412,7 @@ def add_hitting_time_columns_in_place(swing_df: pd.DataFrame, swing_filename):
     """Add time related columns to a dataframe of hitting data series data."""
 
     if "lite" in swing_filename or "hawkeye" not in swing_filename:
-        raise NotImplementedError("Unable to add time columns for due to unknown FPS")
+        raise NotImplementedError("Unable to add time columns due to unknown FPS")
 
     frames_per_second_hawkeye = 300  # TODO: can we find a more robust way to add time columns without hardcoded FPS?
 
@@ -453,6 +464,9 @@ def load_games_to_df_from_s3_paths(
 
     all_games = []
     game_count = 0
+
+    if verbose:
+        print("loading data paths...")
 
     for game_path in game_paths:
         try:
