@@ -6,7 +6,7 @@ import random
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
-from itertools import repeat, chain
+from itertools import repeat
 from typing import Optional, Union
 
 import awswrangler as wr
@@ -26,8 +26,12 @@ from .datatypes import (
     PlayerMetadata,
     S3Metadata,
     MOVEMENT_TYPE_IDS_MAP,
+    MocapType,
     MovementType,
+    FileType,
     DataType,
+    HITTING_SERIES_TYPES,
+    HITTING_METRICS_TYPES,
     get_s3_bucket,
 )
 from .inverse_kinematics import add_ik_cols
@@ -248,17 +252,29 @@ def download_s3_summary_df(
             index_col=[0],
         )
 
-    if (
-        not s3_summary_df["s3_path_delivery"]
-        .iloc[0]
-        .endswith(s3_metadata.file_type.value)
-    ):
+    delivery_path_example = s3_summary_df["s3_path_delivery"].dropna().iloc[0]
+    available_file_types = tuple(ftype.value for ftype in FileType)
+
+    if delivery_path_example.endswith(available_file_types):
+        if not delivery_path_example.endswith(s3_metadata.file_type.value):
+            current_file_type = next(
+                ftype
+                for ftype in available_file_types
+                if ftype in delivery_path_example
+            )
+            s3_summary_df["s3_path_delivery"] = s3_summary_df[
+                "s3_path_delivery"
+            ].str.replace(current_file_type, s3_metadata.file_type.value)
+
+    else:
         s3_summary_df["s3_path_delivery"] = (
             s3_summary_df["s3_path_delivery"] + s3_metadata.file_type.value
         )
 
     # replace reboot org bucket with s3_bucket variable
-    s3_summary_df["s3_path_delivery"] = s3_summary_df["s3_path_delivery"].replace("reboot-motion-org-[a-z0-9]*", s3_bucket, regex=True)
+    s3_summary_df["s3_path_delivery"] = s3_summary_df["s3_path_delivery"].replace(
+        "reboot-motion-org-[a-z0-9]*", s3_bucket, regex=True
+    )
 
     s3_summary_df["org_player_id"] = s3_summary_df["org_player_id"].astype("string")
 
@@ -392,6 +408,43 @@ def set_is_right_handed(df: pd.DataFrame):
     df.drop(columns=["percent_stride"], inplace=True)
 
 
+def add_hitting_time_columns_in_place(swing_df: pd.DataFrame, swing_filename):
+    """Add time related columns to a dataframe of hitting data series data."""
+
+    if "lite" in swing_filename or "hawkeye" not in swing_filename:
+        raise NotImplementedError("Unable to add time columns due to unknown FPS")
+
+    frames_per_second_hawkeye = 300  # TODO: can we find a more robust way to add time columns without hardcoded FPS?
+
+    metrics_csv_filename = swing_filename.replace("series", "metrics").replace(
+        "s.csv", "m.csv"
+    )
+
+    metrics_df = wr.s3.read_csv(metrics_csv_filename)
+
+    swing_df["time"] = (np.arange(swing_df.shape[0]) / frames_per_second_hawkeye).round(
+        5
+    )
+
+    if not np.isnan(metrics_df.loc[0, "impact_event"]):
+        end_index = int(metrics_df.loc[0, "impact_event"])
+
+    else:
+        end_index = int(metrics_df.loc[0, "peak_velocity_event"])
+
+    swing_df["time_from_swing_end"] = (
+        swing_df["time"].values - swing_df["time"].values[end_index]
+    ).round(5)
+    swing_df["rel_frame"] = (np.arange(swing_df.shape[0]) - end_index).astype(int)
+
+    foot_down = int(metrics_df.loc[0, "foot_down_event"])
+    norm_time_step = 100 / (end_index - foot_down)
+
+    swing_df["norm_time"] = (
+        (np.arange(swing_df.shape[0]) - foot_down) * norm_time_step
+    ).round(5)
+
+
 def load_games_to_df_from_s3_paths(
     game_paths: list[str],
     add_ik_joints: bool = False,
@@ -412,58 +465,38 @@ def load_games_to_df_from_s3_paths(
     all_games = []
     game_count = 0
 
+    if verbose:
+        print("loading data paths...")
+
     for game_path in game_paths:
         try:
-            if "hitting-processed-series" in game_path:
+            if any(hitting_type in game_path for hitting_type in HITTING_SERIES_TYPES):
                 swing_filenames = wr.s3.list_objects(game_path)
+
                 swing_dfs = []
+
                 for swing_filename in swing_filenames:
                     swing_df = wr.s3.read_csv(
                         swing_filename, index_col=[0], use_threads=True
                     ).dropna(axis=1, how="all")
 
-                    basepath = os.path.join(*swing_filename.split("/")[1:-2])
-                    movement_id = os.path.basename(swing_filename)[:-8]
-                    org_movement_id = movement_id.split("_")[-1]
+                    org_movement_id = swing_filename.split("/")[-1].split("_")[1]
 
                     if "time" not in swing_df.columns:
-                        metrics_csv_filename = os.path.join(
-                            "s3://",
-                            basepath,
-                            "hitting-processed-metrics",
-                            f"{movement_id}_bhm.csv",
-                        )
-                        metrics_df = wr.s3.read_csv(metrics_csv_filename)
+                        add_hitting_time_columns_in_place(swing_df, swing_filename)
 
-                        swing_df["time"] = (np.arange(swing_df.shape[0]) / 300).round(5)
-
-                        if not np.isnan(metrics_df.loc[0, "impact_event"]):
-                            end_index = int(metrics_df.loc[0, "impact_event"])
-                        else:
-                            end_index = int(metrics_df.loc[0, "peak_velocity_event"])
-
-                        swing_df["time_from_swing_end"] = (
-                            swing_df["time"].values - swing_df["time"].values[end_index]
-                        ).round(5)
-                        swing_df["rel_frame"] = (
-                            np.arange(swing_df.shape[0]) - end_index
-                        ).astype(int)
-
-                        foot_down = int(metrics_df.loc[0, "foot_down_event"])
-                        norm_time_step = 100 / (end_index - foot_down)
-
-                        swing_df["norm_time"] = (
-                            (np.arange(swing_df.shape[0]) - foot_down) * norm_time_step
-                        ).round(5)
-
+                    if "org_movement_id" not in swing_df.columns:
                         swing_df["org_movement_id"] = org_movement_id
 
                     swing_dfs.append(swing_df)
 
                 current_game = pd.concat(swing_dfs)
 
-            elif "hitting-processed-metrics" in game_path:
+            elif any(
+                hitting_type in game_path for hitting_type in HITTING_METRICS_TYPES
+            ):
                 swing_filenames = wr.s3.list_objects(game_path)
+
                 current_game = wr.s3.read_csv(swing_filenames, use_threads=True).dropna(
                     axis=1, how="all"
                 )
@@ -499,7 +532,13 @@ def load_games_to_df_from_s3_paths(
                         game_path, index_col=[0], use_threads=True
                     ).dropna(axis=1, how="all")
 
-            supported_mocap_types = ["hawkeye", "hawkeyehfr"]
+            org_player_id = (
+                game_path.split("/")[-3]
+                if game_path.endswith("/")
+                else game_path.split("/")[-2]
+            )
+
+            supported_mocap_types = [mocap_type.value for mocap_type in MocapType]
 
             session_date_idx_list = [
                 i
@@ -509,7 +548,9 @@ def load_games_to_df_from_s3_paths(
             session_date_str = game_path.split("/")[session_date_idx_list[0]]
             current_game["session_date"] = pd.to_datetime(session_date_str)
 
-            used_words = set(supported_mocap_types + [session_date_str])
+            used_words = set(
+                [org_player_id] + supported_mocap_types + [session_date_str]
+            )
             session_num_idx_list = [
                 i
                 for i, s in enumerate(game_path.split("/"))
