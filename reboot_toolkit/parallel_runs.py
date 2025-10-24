@@ -86,9 +86,7 @@ def dispatch(session: boto3.Session) -> List[str]:
         assert (
             response["StatusCode"] == 202
         ), f"Returned with status code {response['StatusCode']}"
-        logger.debug(
-            f"Dispacted inverse kinematics thread {i} and filename {filename}"
-        )
+        logger.debug(f"Dispacted inverse kinematics thread {i} and filename {filename}")
         filenames.append(filename)
     return filenames
 
