@@ -44,7 +44,7 @@ def main():
     print("Downloading summary dataframe...")
 
     s3_df = rtk.download_s3_summary_df(
-        s3_metadata, verbose=False, save_local=save_local
+        s3_metadata, verbose=verbose, save_local=save_local
     )
 
     print("Creating primary segment_df...")
