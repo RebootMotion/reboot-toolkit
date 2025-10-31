@@ -20,18 +20,18 @@ def main():
 
     verbose = True
     save_local = True
-
-    year = int(os.environ["YEAR"])
-    org_player_id = os.environ["ORG_PLAYER_ID"]
     n_recent_games_to_load = 2
 
-    org_player_ids = [org_player_id]
     mocap_type_enums = [MocapType.HAWKEYE_HFR, MocapType.HAWKEYE]
-    movement_type_enum = MovementType.BASEBALL_HITTING
+    movement_type_enum = MovementType.BASEBALL_PITCHING
     handedness_enum = Handedness.LEFT
     file_type_enum = FileType.INVERSE_KINEMATICS
 
     rtk.setup_aws(verbose=verbose)
+
+    year = int(os.environ["YEAR"])
+    org_player_id = os.environ["ORG_PLAYER_ID"]
+    org_player_ids = [org_player_id]
 
     s3_metadata = S3Metadata(
         org_id=os.environ["ORG_ID"],
@@ -80,11 +80,11 @@ def main():
 
     games_df = rtk.load_games_to_df_from_s3_paths(s3_paths_games, verbose=verbose)
 
-    print("Right wrist without offsets added:", games_df["RWJC_Z"].iloc[0])
+    print("Right wrist without offsets added:", games_df["RWJC_Y"].iloc[0])
 
     games_df = rtk.add_offsets_from_metadata(games_df, metadata_df, movement_type_enum)
 
-    print("Right wrist WITH offsets added:", games_df["RWJC_Z"].iloc[0])
+    print("Right wrist WITH offsets added:", games_df["RWJC_Y"].iloc[0])
 
 
 if __name__ == "__main__":

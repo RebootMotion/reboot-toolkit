@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import os
 import random
+import warnings
 
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from itertools import repeat
@@ -1128,18 +1129,68 @@ def export_data(
     return pa.concat_tables(pyarrow_tables).to_pandas()
 
 
+def rotate_keypoints_in_place(
+    df: pd.DataFrame,
+    rotations: Sequence[tuple[str, float]],
+) -> None:
+    """Apply rotations to all 3D keypoints in a DataFrame.
+
+    :param df: DataFrame with columns like "joint_X", "joint_Y", "joint_Z"
+    :param rotations: Sequence of (axis, angle_rad) tuples
+    :raises ValueError: If invalid axis specified
+    """
+    R = np.eye(3)
+
+    for axis, angle_rad in rotations:
+        if angle_rad >= (2 * np.pi):
+            warnings.warn(
+                f"Angle {angle_rad} is greater than or equal to 2π, this function expects angles in radians.",
+                stacklevel=2,
+            )
+
+        c = np.cos(angle_rad)
+        s = np.sin(angle_rad)
+
+        if axis.lower() == "x":
+            Rx = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+            R = Rx @ R
+
+        elif axis.lower() == "y":
+            Ry = np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
+            R = Ry @ R
+
+        elif axis.lower() == "z":
+            Rz = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+            R = Rz @ R
+
+        else:
+            raise ValueError(f"Invalid axis: {axis}, expected one of {'x', 'y', 'z'}.")
+
+    keypoint_cols = sorted(
+        {col.rsplit("_", 1)[0] for col in df.columns if col.endswith("_X")}
+    )
+
+    # Rotate the data in place
+    for keypoint_col in keypoint_cols:
+        cols = [f"{keypoint_col}_X", f"{keypoint_col}_Y", f"{keypoint_col}_Z"]
+
+        df.loc[:, cols] = df[cols].to_numpy() @ R.T
+
+
 def add_offsets_from_metadata(
     data_df: pd.DataFrame, metadata_df: pd.DataFrame, movement_type_enum: MovementType
 ) -> pd.DataFrame:
     """
     Add the X, Y, and Z offsets from the metadata to the position columns of an existing dataframe.
+    Note that for certain movement types, like baseball pitching, this will also involve a rotation
+    to get the player back to the original coordinate system.
 
     :param data_df: the data for adding the offsets
     :param metadata_df: the dataframe containing the offsets
     :param movement_type_enum: the movement type enum
     :return: the dataframe with the added offsets
     """
-    accepted_movement_types = {"baseball-hitting"}
+    accepted_movement_types = {"baseball-hitting", "baseball-pitching"}
 
     if movement_type_enum.value not in accepted_movement_types:
         raise NotImplementedError(
@@ -1168,6 +1219,9 @@ def add_offsets_from_metadata(
     data_df = data_df.merge(
         metadata_df[["org_movement_id"] + offset_cols], on="org_movement_id", how="left"
     )
+
+    if movement_type_enum.value == "baseball-pitching":
+        rotate_keypoints_in_place(data_df, [("z", np.pi)])
 
     for coord in ("X", "Y", "Z"):
         coord_cols = [c for c in base_cols if c.endswith(f"_{coord}")]
