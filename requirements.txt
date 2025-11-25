@@ -1,7 +1,7 @@
 awswrangler<=3.14.0
 boto3<2.0.0
-ipython<8.0.0
-ipywidgets<8.0.0
+ipython<9.0.0
+ipywidgets<9.0.0
 matplotlib<4.0.0
 mlb_statsapi@git+https://github.com/RebootMotion/mlb-statsapi.git@v1.2.0
 mujoco==3.3.5
