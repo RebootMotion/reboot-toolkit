@@ -22,7 +22,7 @@ def main():
     save_local = True
     n_recent_games_to_load = 2
 
-    mocap_type_enums = [MocapType.HAWKEYE_HFR, MocapType.HAWKEYE]
+    mocap_type_enums = [MocapType.HAWKEYE_HFR, MocapType.HAWKEYE, MocapType.HAWKEYE_26]
     movement_type_enum = MovementType.BASEBALL_PITCHING
     handedness_enum = Handedness.LEFT
     file_type_enum = FileType.INVERSE_KINEMATICS
