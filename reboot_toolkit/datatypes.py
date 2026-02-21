@@ -27,6 +27,7 @@ def get_s3_bucket(org_id: Optional[str] = None) -> Optional[str]:
 class MocapType(str, Enum):
     HAWKEYE = "hawkeye"
     HAWKEYE_HFR = "hawkeyehfr"
+    HAWKEYE_26 = "hawkeye26"
     REBOOT_MOTION = "rebootmotion"
 
 
